@@ -1,0 +1,131 @@
+package com.reelblocker
+
+import android.accessibilityservice.AccessibilityService
+import android.content.SharedPreferences
+import android.view.accessibility.AccessibilityEvent
+import android.widget.Toast
+
+/**
+ * The whole blocker. It exists only to react to events the OS hands it; it starts
+ * nothing, schedules nothing repeating, and holds nothing.
+ */
+class BlockerService : AccessibilityService() {
+
+    // ---- EDIT THIS WHEN DETECTION BREAKS -----------------------------------
+    // These are app-owned view ids, not Android APIs, so a big YouTube or Instagram
+    // update can rename them. Each one below is corroborated by at least one other
+    // open-source blocker (see README). README "When detection breaks" has the
+    // uiautomator recipe for reading the real ones off the phone.
+    // Do not pad this list with guesses: every extra id is another lookup per event.
+    private val shortsViewIds = arrayOf(
+        "com.google.android.youtube:id/reel_recycler",
+        "com.google.android.youtube:id/reel_player_underlay",
+        "com.google.android.youtube:id/reel_progress_bar",
+        "com.instagram.android:id/clips_viewer_view_pager",
+        "com.instagram.android:id/clips_video_container"
+    )
+    // ------------------------------------------------------------------------
+
+    // Long enough to swallow the burst of events the back-press itself generates,
+    // which is a battery feature as much as a correctness one. Shared with the lock
+    // so a locked app cannot spam toasts either.
+    private val cooldownMs = 1200L
+
+    private lateinit var prefs: SharedPreferences
+    private var lastActionAt = 0L
+
+    // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
+    // lambda passed inline would be collected and the subscription would silently
+    // stop updating.
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+        applyEventTypes()
+    }
+
+    override fun onServiceConnected() {
+        prefs = Prefs.get(this)
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
+        Prefs.clearExpired(this)
+        Prefs.syncAlarms(this)   // re-arms after a reboot; no BOOT_COMPLETED receiver needed
+        applyEventTypes()
+    }
+
+    override fun onDestroy() {
+        if (this::prefs.isInitialized) prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
+        super.onDestroy()
+    }
+
+    /**
+     * Asks the system for the minimum event set the currently-active features need.
+     * With both toggles off this is 0 - subscribed to nothing, which is the point.
+     *
+     * Reads the live serviceInfo and mutates only eventTypes, so packageNames and the
+     * flags from accessibility_service_config.xml survive untouched.
+     */
+    private fun applyEventTypes() {
+        val info = serviceInfo ?: return
+        val wanted = when {
+            // Shorts detection needs content-changed: YouTube opens Shorts inside its
+            // existing window, so entering the feed often fires no window-state event
+            // at all. This is the expensive tier and it is only ever on while the
+            // Shorts toggle is active.
+            Prefs.shortsActive(prefs) ->
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            // Opening an app always changes the window, so the lock needs no more.
+            Prefs.lockActive(prefs) -> AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            else -> 0
+        }
+        if (info.eventTypes != wanted) {
+            info.eventTypes = wanted
+            serviceInfo = info
+        }
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Cheapest test first. packageName is already in the event object and costs
+        // nothing; nothing that costs an IPC happens above this line.
+        val pkg = event.packageName?.toString() ?: return
+        if (pkg != Prefs.YOUTUBE && pkg != Prefs.INSTAGRAM) return
+
+        val shorts = Prefs.shortsActive(prefs)
+        val lock = Prefs.lockActive(prefs)
+        if (!shorts && !lock) {
+            // A timer ran out and the inexact alarm has not landed yet. We were woken
+            // anyway, so drop the subscription now rather than waiting for it.
+            Prefs.clearExpired(this)
+            applyEventTypes()
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        if (now - lastActionAt < cooldownMs) return
+
+        if (lock && Prefs.lockedApp(prefs, pkg)) {
+            lastActionAt = now
+            performGlobalAction(GLOBAL_ACTION_HOME)
+            Toast.makeText(this, lockToast(), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!shorts) return
+
+        // One rootInActiveWindow, then at most two indexed id lookups. These resolve
+        // inside the target app's process and are not a tree walk. Never make this a
+        // recursive walk of the node tree.
+        val root = rootInActiveWindow ?: return
+        for (id in shortsViewIds) {
+            if (!id.startsWith(pkg)) continue   // free: skips the other app's ids
+            if (root.findAccessibilityNodeInfosByViewId(id).isNotEmpty()) {
+                lastActionAt = now
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                return
+            }
+        }
+    }
+
+    override fun onInterrupt() {}
+
+    private fun lockToast(): String {
+        val until = prefs.getLong(Prefs.LOCK_UNTIL, 0L)
+        return if (until == 0L) "Locked" else "Locked until " + Prefs.timeText(this, until)
+    }
+}

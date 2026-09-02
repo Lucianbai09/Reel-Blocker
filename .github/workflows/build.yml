@@ -1,0 +1,53 @@
+name: Build APK
+
+# Builds a debug APK on GitHub's machines and attaches it to a release called
+# "latest", so it can be installed by tapping the file on the phone. Nothing has to
+# be installed on the PC.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:      # lets you rebuild from the Actions tab by hand
+
+permissions:
+  contents: write         # needed to publish the release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # This repo has no gradle-wrapper.jar (it is a binary and cannot be authored
+      # as text), so Gradle is installed directly and invoked as `gradle` rather
+      # than `./gradlew`.
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      # Keeps the debug signing key identical between runs. Without this every
+      # build would be signed with a fresh key, and Android would refuse to install
+      # a new APK over an older one.
+      - name: Cache debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: debug-keystore
+
+      - name: Build
+        run: gradle assembleDebug --no-daemon
+
+      # gh is preinstalled on GitHub runners, so no third-party action is needed.
+      - name: Publish APK to the "latest" release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest \
+            app/build/outputs/apk/debug/app-debug.apk \
+            --title "Latest build" \
+            --notes "Debug APK built from ${{ github.sha }}. Tap app-debug.apk on the phone to install."

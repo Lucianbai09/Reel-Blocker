@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This XML declares the MAXIMUM the service may ever ask for. The service narrows
+     eventTypes down at runtime with setServiceInfo() - see BlockerService.applyEventTypes().
+
+     packageNames is the single biggest battery saving in the app: the system filters
+     on it BEFORE any IPC into our process, so events from every other app on the
+     phone cost us literally nothing. Add a third app by editing this line (and the
+     package constants in Prefs.kt).
+
+     notificationTimeout=500 makes the system coalesce content-changed events to at
+     most one per 500ms, on its side, so scrolling a feed cannot flood us. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/service_description"
+    android:notificationTimeout="500"
+    android:packageNames="com.google.android.youtube,com.instagram.android" />
