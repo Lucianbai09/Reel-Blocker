@@ -112,4 +112,8 @@ object Prefs {
     }
 
     fun timeText(c: Context, millis: Long): String = DateFormat.getTimeFormat(c).format(Date(millis))
+
+    /** " until 3:45 PM", or "" when there is no timer. Shared by the toast and the notification. */
+    fun untilText(c: Context, until: Long): String =
+        if (until == 0L) "" else " until " + timeText(c, until)
 }

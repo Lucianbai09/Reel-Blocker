@@ -1,6 +1,11 @@
 package com.reelblocker
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.content.SharedPreferences
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
@@ -39,6 +44,7 @@ class BlockerService : AccessibilityService() {
     // stop updating.
     private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
         applyEventTypes()
+        updateNotification()
     }
 
     override fun onServiceConnected() {
@@ -46,10 +52,15 @@ class BlockerService : AccessibilityService() {
         prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         Prefs.clearExpired(this)
         Prefs.syncAlarms(this)   // re-arms after a reboot; no BOOT_COMPLETED receiver needed
+        createChannel()
         applyEventTypes()
+        updateNotification()     // notifications are cleared by a reboot, so re-post here
     }
 
     override fun onDestroy() {
+        // Without this, turning the accessibility service off would leave a
+        // notification claiming things are still being blocked.
+        notifications()?.cancel(NOTIF_ID)
         if (this::prefs.isInitialized) prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         super.onDestroy()
     }
@@ -124,8 +135,59 @@ class BlockerService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    private fun lockToast(): String {
-        val until = prefs.getLong(Prefs.LOCK_UNTIL, 0L)
-        return if (until == 0L) "Locked" else "Locked until " + Prefs.timeText(this, until)
+    private fun lockToast() = "Locked" + Prefs.untilText(this, prefs.getLong(Prefs.LOCK_UNTIL, 0L))
+
+    // ---- status notification -----------------------------------------------
+    // A plain notification, NOT a foreground service. Once posted it is owned by the
+    // system and drawn by SystemUI; this process can be killed and it stays up. So it
+    // costs one IPC at the moment state changes and nothing at all while it shows.
+
+    private fun notifications() = getSystemService(NotificationManager::class.java)
+
+    private fun createChannel() {
+        // IMPORTANCE_LOW: appears in the status bar, but never makes a sound, never
+        // pops up as a heads-up, and never wakes the screen.
+        notifications()?.createNotificationChannel(
+            NotificationChannel(CHANNEL_ID, "Status", NotificationManager.IMPORTANCE_LOW)
+        )
+    }
+
+    private fun updateNotification() {
+        val nm = notifications() ?: return
+        val shorts = Prefs.shortsActive(prefs)
+        val lock = Prefs.lockActive(prefs)
+        if (!shorts && !lock) {
+            nm.cancel(NOTIF_ID)
+            return
+        }
+
+        // Spelling out the end time means a notification left stale by a late alarm
+        // explains itself instead of just being wrong.
+        val text = listOfNotNull(
+            if (shorts) "Skipping Shorts" + Prefs.untilText(this, prefs.getLong(Prefs.SHORTS_UNTIL, 0L)) else null,
+            if (lock) "Apps locked" + Prefs.untilText(this, prefs.getLong(Prefs.LOCK_UNTIL, 0L)) else null
+        ).joinToString(" · ")
+
+        val tap = PendingIntent.getActivity(
+            this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        nm.notify(
+            NOTIF_ID,
+            Notification.Builder(this, CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setContentTitle("Reel Blocker")
+                .setContentText(text)
+                .setContentIntent(tap)
+                .setOngoing(true)     // not swipeable, the way a VPN notification behaves
+                .setShowWhen(false)
+                .build()
+        )
+    }
+
+    private companion object {
+        const val NOTIF_ID = 1
+        const val CHANNEL_ID = "status"
     }
 }

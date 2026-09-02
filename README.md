@@ -9,7 +9,34 @@ Personal, sideloaded Android app. Two independent features:
 Each has a switch and an optional minutes field (blank or `0` = stay on until you
 switch it off).
 
-No permissions, no dependencies, no AndroidX, no icons, no tests, no analytics.
+While either is on, an ongoing status-bar notification says which, and until when.
+
+One permission (`POST_NOTIFICATIONS`), no dependencies, no AndroidX, no icons, no
+tests, no analytics.
+
+## Why this app cannot leak anything
+
+**There is no `INTERNET` permission.** Android maps that permission to a Linux group,
+so without it the kernel will not let this process open a network socket at all. The
+app therefore cannot send anything anywhere — no telemetry, no screen contents,
+nothing — regardless of what the code says.
+
+The rest follows from the same audit:
+
+- **What it can read:** YouTube and Instagram only. `packageNames` in the service
+  config means the system never delivers events from any other app, and the code only
+  calls `rootInActiveWindow` while handling one of those events.
+- **What it stores:** six values — four booleans and two timestamps — in app-private
+  storage, with `allowBackup="false"`. No screen content is ever written down.
+- **What it can do:** press Back and press Home. That is the entire list. No file or
+  storage access, no calls, no purchases.
+- **What other apps can do to it:** nothing. The receiver is not exported and the
+  service is protected by `BIND_ACCESSIBILITY_SERVICE`, which only the OS holds.
+- **Getting rid of it:** always possible and immediate. No Device Admin, no overlay,
+  no anti-uninstall — `Settings > Accessibility > Reel Blocker > off`, or a normal
+  uninstall.
+
+Worst case if it misbehaves is a Back press at the wrong moment.
 
 ---
 
@@ -327,8 +354,15 @@ moment it expires whether or not the alarm has landed.
 ## Deliberately absent
 
 Recursive node-tree walks, `flagRetrieveInteractiveWindows`, exact or wakeup alarms,
-boot receivers, overlays (`SYSTEM_ALERT_WINDOW`), any manifest permission,
+boot receivers, overlays (`SYSTEM_ALERT_WINDOW`), `INTERNET`, foreground services,
 anti-uninstall protection, analytics, accounts, sync, themes, icons, tests.
+
+**The status notification is not a foreground service.** Those get conflated because
+a foreground service is legally required to show one, which is why VPN apps always
+have both. A plain notification is owned by the system once posted and drawn by
+SystemUI — this process can be killed and it stays up. It costs one IPC at the moment
+state changes and nothing at all while it is showing, so it does not create a resident
+process and does not breach invariant 2.
 
 A full-screen lock Activity was **not** built, on purpose: starting an Activity from
 the background is blocked on Android 10+ without `SYSTEM_ALERT_WINDOW`, which would

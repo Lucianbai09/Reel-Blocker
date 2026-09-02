@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- No <uses-permission> anywhere, on purpose. Accessibility is granted by hand in
-     Settings, and inexact non-wakeup alarms need no permission. -->
+<!-- Exactly one permission, and deliberately not INTERNET: without that one the
+     kernel will not let this process open a network socket at all, so nothing it can
+     see can ever leave the phone. Accessibility is granted by hand in Settings, and
+     inexact non-wakeup alarms need no permission either. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Status-bar notification only. Required from Android 13; denying it costs
+         nothing but the notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
