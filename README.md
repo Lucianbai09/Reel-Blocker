@@ -93,7 +93,9 @@ adb shell uiautomator dump /sdcard/w.xml && adb pull /sdcard/w.xml
 then grep the dump for `resource-id` and replace the matching line. Don't add extra
 ids speculatively — each one is another lookup on every event.
 
-*Confirmed working against the YouTube and Instagram versions installed 2 Sep 2026.*
+Ids must match the full-screen player only. `clips_video_container` was removed for
+matching Reels embedded in the normal Instagram home feed, which made scrolling the
+timeline back you out of the app.
 
 ## Building locally
 
