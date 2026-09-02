@@ -17,20 +17,13 @@ import android.widget.Toast
 class BlockerService : AccessibilityService() {
 
     // ---- EDIT THIS WHEN DETECTION BREAKS -----------------------------------
-    // These are app-owned view ids, not Android APIs, so a big YouTube or Instagram
-    // update can rename them. Each one below is corroborated by at least one other
-    // open-source blocker (see README). README "When detection breaks" has the
-    // uiautomator recipe for reading the real ones off the phone.
-    // Do not pad this list with guesses: every extra id is another lookup per event.
+    // App-owned view ids, not Android APIs, so an app update can rename them. The
+    // README has the uiautomator recipe for reading the current ones off the phone.
     //
-    // Ids must match the full-screen player ONLY. Two were removed for being too
-    // broad: clips_video_container, because Instagram also uses it for Reels embedded
-    // inline in the home feed, and reel_recycler, because it covers the Shorts shelf
-    // on the YouTube home feed as well as the Shorts player. Either one turns
-    // scrolling a normal feed into a back press, and since re-opening the app
-    // restores the same scroll position it fires again - an inescapable loop.
-    // What is left is player-only: an underlay and a progress bar exist in the
-    // full-screen player and nowhere else.
+    // Ids must match the full-screen player ONLY, and each one costs a lookup on
+    // every event. clips_video_container and reel_recycler were both removed for
+    // also matching feed-embedded Reels and the Shorts shelf, which turned scrolling
+    // a home feed into an inescapable back-press loop.
     private val shortsViewIds = arrayOf(
         "com.google.android.youtube:id/reel_player_underlay",
         "com.google.android.youtube:id/reel_progress_bar",
