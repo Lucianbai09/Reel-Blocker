@@ -161,12 +161,17 @@ class BlockerService : AccessibilityService() {
             return
         }
 
-        // Spelling out the end time means a notification left stale by a late alarm
-        // explains itself instead of just being wrong.
-        val text = listOfNotNull(
-            if (shorts) "Skipping Shorts" + Prefs.untilText(this, prefs.getLong(Prefs.SHORTS_UNTIL, 0L)) else null,
-            if (lock) "Apps locked" + Prefs.untilText(this, prefs.getLong(Prefs.LOCK_UNTIL, 0L)) else null
+        // Collapsed line stays short. The deadlines live in the expanded view, which
+        // also means a notification left stale by a late alarm explains itself.
+        val summary = listOfNotNull(
+            if (shorts) "Skipping Shorts" else null,
+            if (lock) "Apps locked" else null
         ).joinToString(" · ")
+
+        val detail = listOfNotNull(
+            if (shorts) "Skipping Shorts" + deadline(Prefs.SHORTS_UNTIL) else null,
+            if (lock) "Apps locked" + deadline(Prefs.LOCK_UNTIL) else null
+        ).joinToString("\n")
 
         val tap = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
@@ -176,14 +181,21 @@ class BlockerService : AccessibilityService() {
         nm.notify(
             NOTIF_ID,
             Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_lock)
+                .setSmallIcon(R.drawable.ic_x)
                 .setContentTitle("Reel Blocker")
-                .setContentText(text)
+                .setContentText(summary)
+                .setStyle(Notification.BigTextStyle().bigText(detail))
                 .setContentIntent(tap)
                 .setOngoing(true)     // not swipeable, the way a VPN notification behaves
                 .setShowWhen(false)
                 .build()
         )
+    }
+
+    /** " until 3:45 PM", or " until you turn it off" when there is no timer. */
+    private fun deadline(key: String): String {
+        val until = prefs.getLong(key, 0L)
+        return if (until == 0L) " until you turn it off" else Prefs.untilText(this, until)
     }
 
     private companion object {
