@@ -132,7 +132,11 @@ class BlockerService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         for (id in shortsViewIds) {
             if (!id.startsWith(pkg)) continue   // free: skips the other app's ids
-            if (root.findAccessibilityNodeInfosByViewId(id).isNotEmpty()) {
+            // isVisibleToUser is the entire "only while it is actually full-screen"
+            // rule. Both apps leave the player's views in the hierarchy after you
+            // back out of it, so matching on presence alone kept firing and pushed
+            // you out of the app entirely. Presence means built; visible means shown.
+            if (root.findAccessibilityNodeInfosByViewId(id).any { it.isVisibleToUser }) {
                 lastActionAt = now
                 performGlobalAction(GLOBAL_ACTION_BACK)
                 return
@@ -171,12 +175,12 @@ class BlockerService : AccessibilityService() {
         // Collapsed line stays short. The deadlines live in the expanded view, which
         // also means a notification left stale by a late alarm explains itself.
         val summary = listOfNotNull(
-            if (shorts) "Skipping Shorts" else null,
+            if (shorts) "Blocking Shorts" else null,
             if (lock) "Apps locked" else null
         ).joinToString(" · ")
 
         val detail = listOfNotNull(
-            if (shorts) "Skipping Shorts" + deadline(Prefs.SHORTS_UNTIL) else null,
+            if (shorts) "Blocking Shorts" + deadline(Prefs.SHORTS_UNTIL) else null,
             if (lock) "Apps locked" + deadline(Prefs.LOCK_UNTIL) else null
         ).joinToString("\n")
 

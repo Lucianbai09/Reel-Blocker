@@ -5,7 +5,7 @@ can lock those apps entirely. Built to cost nothing when it isn't blocking.
 
 ## Features
 
-- **Skip Shorts / Reels** — presses Back when the full-screen player opens.
+- **Block Shorts / Reels** — presses Back when the full-screen player opens.
 - **Lock apps** — sends you Home with a "Locked" toast when a locked app opens.
   YouTube and Instagram are toggled separately.
 - **Timers** — blank or `0` means stay on until you switch it off; any number is
@@ -38,7 +38,7 @@ timer. The status line under each switch shows `Off`, `On until 3:45 PM`, or
 To stop everything: turn the switches off, or
 `Settings > Accessibility > Reel Blocker > off`.
 
-Note that **Lock apps takes priority over Skip Shorts** — if YouTube is locked, you
+Note that **Lock apps takes priority over Block Shorts** — if YouTube is locked, you
 get sent home before Shorts detection ever runs.
 
 ## Updating
