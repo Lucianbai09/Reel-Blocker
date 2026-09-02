@@ -23,14 +23,15 @@ class BlockerService : AccessibilityService() {
     // uiautomator recipe for reading the real ones off the phone.
     // Do not pad this list with guesses: every extra id is another lookup per event.
     //
-    // Ids must match the full-screen player ONLY. clips_video_container was removed
-    // because Instagram also uses it for Reels embedded inline in the home feed, so
-    // scrolling the normal timeline past one triggered a back press, and re-opening
-    // the app restored the same scroll position and fired again - an inescapable
-    // loop. If YouTube's home feed ever does the same, reel_recycler is the
-    // equivalent suspect: it is the Shorts shelf as well as the Shorts player.
+    // Ids must match the full-screen player ONLY. Two were removed for being too
+    // broad: clips_video_container, because Instagram also uses it for Reels embedded
+    // inline in the home feed, and reel_recycler, because it covers the Shorts shelf
+    // on the YouTube home feed as well as the Shorts player. Either one turns
+    // scrolling a normal feed into a back press, and since re-opening the app
+    // restores the same scroll position it fires again - an inescapable loop.
+    // What is left is player-only: an underlay and a progress bar exist in the
+    // full-screen player and nowhere else.
     private val shortsViewIds = arrayOf(
-        "com.google.android.youtube:id/reel_recycler",
         "com.google.android.youtube:id/reel_player_underlay",
         "com.google.android.youtube:id/reel_progress_bar",
         "com.instagram.android:id/clips_viewer_view_pager"
