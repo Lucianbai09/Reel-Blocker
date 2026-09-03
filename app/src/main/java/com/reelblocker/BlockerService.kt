@@ -42,9 +42,14 @@ class BlockerService : AccessibilityService() {
     // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
     // lambda passed inline would be collected and the subscription would silently
     // stop updating.
-    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
-        applyEventTypes()
-        updateNotification()
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        // applyDnd writes its own bookkeeping key; ignoring it here stops that write
+        // from bouncing straight back through this listener.
+        if (key != Prefs.DND_SET_BY_US) {
+            applyEventTypes()
+            updateNotification()
+            applyDnd()
+        }
     }
 
     override fun onServiceConnected() {
@@ -55,12 +60,14 @@ class BlockerService : AccessibilityService() {
         createChannel()
         applyEventTypes()
         updateNotification()     // notifications are cleared by a reboot, so re-post here
+        applyDnd()
     }
 
     override fun onDestroy() {
-        // Without this, turning the accessibility service off would leave a
-        // notification claiming things are still being blocked.
+        // Without these, turning the accessibility service off would leave a
+        // notification claiming things are still blocked, and Do Not Disturb stuck on.
         notifications()?.cancel(NOTIF_ID)
+        releaseDnd()
         if (this::prefs.isInitialized) prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         super.onDestroy()
     }
@@ -200,6 +207,41 @@ class BlockerService : AccessibilityService() {
     private fun deadline(key: String): String {
         val until = prefs.getLong(key, 0L)
         return if (until == 0L) " until you turn it off" else Prefs.untilText(this, until)
+    }
+
+    // ---- do not disturb ----------------------------------------------------
+    // One setInterruptionFilter call at the moment the lock turns on or off, which is
+    // a moment we were already awake for. Nothing is held and nothing polls.
+
+    /** Turns Do Not Disturb on with the lock, and back off again with it. */
+    private fun applyDnd() {
+        val nm = notifications() ?: return
+        if (!nm.isNotificationPolicyAccessGranted) return   // not granted yet; the UI asks
+
+        val want = Prefs.lockActive(prefs) && prefs.getBoolean(Prefs.LOCK_DND, false)
+        val ours = prefs.getBoolean(Prefs.DND_SET_BY_US, false)
+
+        if (want && !ours) {
+            // Only take over when nothing else is already filtering, so a Do Not
+            // Disturb the user set by hand is never overwritten or later cleared.
+            if (nm.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL) {
+                // PRIORITY, not NONE: alarms and starred contacts still come through.
+                // Silencing alarms for a study timer would be a genuinely bad trade.
+                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                Prefs.setFlag(this, Prefs.DND_SET_BY_US, true)
+            }
+        } else if (!want && ours) {
+            releaseDnd()
+        }
+    }
+
+    private fun releaseDnd() {
+        if (!this::prefs.isInitialized) return
+        if (!prefs.getBoolean(Prefs.DND_SET_BY_US, false)) return
+        val nm = notifications() ?: return
+        if (!nm.isNotificationPolicyAccessGranted) return
+        nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+        Prefs.setFlag(this, Prefs.DND_SET_BY_US, false)
     }
 
     private companion object {

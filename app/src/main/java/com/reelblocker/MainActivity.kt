@@ -2,6 +2,7 @@ package com.reelblocker
 
 import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.SharedPreferences
@@ -15,6 +16,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.Switch
 import android.widget.TextView
+import android.widget.Toast
 
 class MainActivity : Activity() {
 
@@ -27,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var tvLock: TextView
     private lateinit var cbYoutube: CheckBox
     private lateinit var cbInstagram: CheckBox
+    private lateinit var cbDnd: CheckBox
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +44,7 @@ class MainActivity : Activity() {
         tvLock = findViewById(R.id.tv_lock)
         cbYoutube = findViewById(R.id.cb_youtube)
         cbInstagram = findViewById(R.id.cb_instagram)
+        cbDnd = findViewById(R.id.cb_dnd)
 
         findViewById<Button>(R.id.btn_settings).setOnClickListener {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -61,6 +65,17 @@ class MainActivity : Activity() {
         }
         cbInstagram.setOnClickListener {
             Prefs.setFlag(this, Prefs.LOCK_INSTAGRAM, cbInstagram.isChecked)
+        }
+        cbDnd.setOnClickListener {
+            // Refuse to store it until access exists, so the checkbox never claims
+            // something that silently would not happen.
+            if (cbDnd.isChecked && !dndAccessGranted()) {
+                cbDnd.isChecked = false
+                Toast.makeText(this, "Allow Do Not Disturb access, then tick this again", Toast.LENGTH_LONG).show()
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+            } else {
+                Prefs.setFlag(this, Prefs.LOCK_DND, cbDnd.isChecked)
+            }
         }
 
         // Asked once, for the status notification. Denying it loses only the
@@ -90,7 +105,12 @@ class MainActivity : Activity() {
         tvLock.text = statusText(p, Prefs.LOCK_ON, Prefs.LOCK_UNTIL)
         cbYoutube.isChecked = p.getBoolean(Prefs.LOCK_YOUTUBE, true)
         cbInstagram.isChecked = p.getBoolean(Prefs.LOCK_INSTAGRAM, true)
+        // Access can be revoked in Settings, so this is re-checked rather than trusted.
+        cbDnd.isChecked = p.getBoolean(Prefs.LOCK_DND, false) && dndAccessGranted()
     }
+
+    private fun dndAccessGranted(): Boolean =
+        getSystemService(NotificationManager::class.java)?.isNotificationPolicyAccessGranted == true
 
     // clearExpired() has already run, so "on" here also means "still within its timer".
     private fun statusText(p: SharedPreferences, onKey: String, untilKey: String): String {

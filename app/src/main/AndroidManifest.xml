@@ -9,6 +9,11 @@
          nothing but the notification. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Lets the app switch Do Not Disturb on and off. It does NOT allow reading any
+         notification - that would be BIND_NOTIFICATION_LISTENER_SERVICE, which this
+         app deliberately does not have. Granted by hand in Settings. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
     <application
         android:allowBackup="false"
         android:label="@string/app_name"

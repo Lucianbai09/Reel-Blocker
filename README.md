@@ -10,6 +10,8 @@ can lock those apps entirely. Built to cost nothing when it isn't blocking.
   YouTube and Instagram are toggled separately.
 - **Timers** — blank or `0` means stay on until you switch it off; any number is
   minutes until it turns itself off.
+- **Do Not Disturb** — optional; rides along with the lock to make it a study mode.
+  Uses priority mode, so alarms and starred contacts still get through.
 - **Status notification** — shows what's on and until when, while anything is on.
 
 Both features are independent; either or both can be on.
@@ -58,8 +60,14 @@ this app cannot open a network socket — nothing it sees can leave the phone, e
 - Can press Back and press Home. That's the whole list of things it can do.
 - No Device Admin, no overlay, no anti-uninstall — uninstall works normally.
 
-Its one permission is `POST_NOTIFICATIONS`, for the status notification. Deny it and
-everything else still works.
+It has two permissions, both narrow:
+
+- `POST_NOTIFICATIONS` — the status notification.
+- `ACCESS_NOTIFICATION_POLICY` — switches Do Not Disturb on and off. It does **not**
+  allow reading any notification; that would be `BIND_NOTIFICATION_LISTENER_SERVICE`,
+  which this app deliberately does not have and never will.
+
+Deny either and everything else still works.
 
 ## Battery
 

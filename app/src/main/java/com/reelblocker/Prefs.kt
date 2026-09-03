@@ -27,6 +27,11 @@ object Prefs {
     const val LOCK_UNTIL = "lock_until"
     const val LOCK_YOUTUBE = "lock_youtube"
     const val LOCK_INSTAGRAM = "lock_instagram"
+    const val LOCK_DND = "lock_dnd"
+
+    // Bookkeeping, not a setting: remembers whether WE turned Do Not Disturb on, so
+    // turning the lock off never clears a Do Not Disturb the user set themselves.
+    const val DND_SET_BY_US = "dnd_set_by_us"
 
     // Distinct request codes keep the two alarms independent; cancelling one must
     // not cancel the other.
