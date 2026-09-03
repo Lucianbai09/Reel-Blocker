@@ -168,12 +168,12 @@ class BlockerService : AccessibilityService() {
         // Collapsed line stays short. The deadlines live in the expanded view, which
         // also means a notification left stale by a late alarm explains itself.
         val summary = listOfNotNull(
-            if (shorts) "Blocking Shorts" else null,
+            if (shorts) "Blocking scrolling" else null,
             if (lock) "Apps locked" else null
         ).joinToString(" · ")
 
         val detail = listOfNotNull(
-            if (shorts) "Blocking Shorts" + deadline(Prefs.SHORTS_UNTIL) else null,
+            if (shorts) "Blocking scrolling" + deadline(Prefs.SHORTS_UNTIL) else null,
             if (lock) "Apps locked" + deadline(Prefs.LOCK_UNTIL) else null
         ).joinToString("\n")
 
