@@ -80,10 +80,17 @@ scrolls and the block switched itself off for as long as scrolling continued —
 up hardest exactly when it was needed most. Only a feed that will not scroll back stops
 it now.
 
-Event coalescing also drops from 500ms to 100ms while a feed is being blocked, because
-at 500ms the rewind landed half a second after the gesture and read as broken. That
-shorter window is the one place this app knowingly trades battery for responsiveness,
-and it applies only while Block Shorts is on and a feed has been learned.
+Event coalescing also drops from 500ms to 100ms, because at 500ms the rewind landed
+half a second after the gesture and read as broken. That is the one place this app
+knowingly trades battery for responsiveness, so it is scoped as tightly as possible:
+only while Block Shorts is on, a feed has been learned, **and Instagram is the app
+actually on screen**.
+
+That last condition matters more than it looks. The timeout is a property of the
+service, not of one event type, so shortening it also un-throttles content-changed —
+and that handler fetches the whole window root plus id lookups. Left short everywhere,
+watching a YouTube video would have cost five times the root fetches for a feature
+YouTube cannot use at all.
 
 **Back is never pressed on the home feed.** Back there exits Instagram, which is what
 made the earlier attempt at this unusable and why it was removed in 532ac65. Scrolling

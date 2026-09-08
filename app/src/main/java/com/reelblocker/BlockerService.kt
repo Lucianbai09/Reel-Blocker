@@ -53,8 +53,12 @@ class BlockerService : AccessibilityService() {
 
     private lateinit var prefs: SharedPreferences
     private var lastActionAt = 0L
-    private var lastScrollAt = 0L
+    private var lastStallAt = 0L
     private var stalls = 0
+
+    // Which watched app is on screen, so the event throttle can be relaxed only where
+    // it is needed. Empty until the first window change.
+    private var foreground = ""
 
     // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
     // lambda passed inline would be collected and the subscription would silently
@@ -127,9 +131,14 @@ class BlockerService : AccessibilityService() {
         }
 
         // 500ms of system-side coalescing is the cheap default, but it also meant the
-        // rewind landed half a second after the gesture, which read as broken. Pay for
-        // a shorter one only while the feed is actually being blocked.
-        val timeout = if (blockingFeed) 100L else 500L
+        // rewind landed half a second after the gesture, which read as broken.
+        //
+        // The timeout is per service, not per event type, so shortening it also
+        // un-throttles content-changed - and that handler fetches the whole window root
+        // plus id lookups. Leaving it short everywhere meant watching a YouTube video
+        // cost five times the root fetches for a feature YouTube cannot even use. So it
+        // is short only while Instagram is the app actually on screen.
+        val timeout = if (blockingFeed && foreground == Prefs.INSTAGRAM) 100L else 500L
 
         if (info.eventTypes != wanted ||
             info.notificationTimeout != timeout ||
@@ -147,6 +156,13 @@ class BlockerService : AccessibilityService() {
         // nothing; nothing that costs an IPC happens above this line.
         val pkg = event.packageName?.toString() ?: return
         if (pkg != Prefs.YOUTUBE && pkg != Prefs.INSTAGRAM && pkg != Prefs.DISCORD) return
+
+        // Track which watched app is on screen so the throttle can follow it. Costs one
+        // setServiceInfo per switch between watched apps, and nothing otherwise.
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != foreground) {
+            foreground = pkg
+            applyEventTypes()
+        }
 
         // Scroll events take their own path. They are the only way to stop the
         // Instagram home feed, and also how the feed teaches us its id. Handled before
@@ -226,10 +242,6 @@ class BlockerService : AccessibilityService() {
         // leaves DMs, search and profiles usable.
         if (id != Prefs.feedId(prefs)) return
 
-        val now = System.currentTimeMillis()
-        if (now - lastScrollAt > scrollResetMs) stalls = 0
-        lastScrollAt = now
-
         // fromIndex is the first row still on screen, so zero means the feed is already
         // at the top. Cheapest possible end to the chain: no action, no IPC.
         if (event.fromIndex == 0) {
@@ -237,10 +249,22 @@ class BlockerService : AccessibilityService() {
             return
         }
 
+        // Decay from the last refusal, never from the last scroll. Measuring from the
+        // last scroll meant a thumb that kept moving also kept the count from ever
+        // resetting, so a run of refusals could switch the block off for as long as
+        // scrolling continued. That is the same trap the count itself used to be.
+        val now = System.currentTimeMillis()
+        if (now - lastStallAt > scrollResetMs) stalls = 0
         if (stalls >= maxStalls) return
+
         // A refused scroll is the only thing that counts against us, and one that works
         // clears the count. However hard the feed is scrolled, it still gets rewound.
-        if (rewind(source)) stalls = 0 else stalls++
+        if (rewind(source)) {
+            stalls = 0
+        } else {
+            stalls++
+            lastStallAt = now
+        }
     }
 
     /**
