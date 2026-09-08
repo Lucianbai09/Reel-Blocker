@@ -126,12 +126,16 @@ class MainActivity : Activity() {
         cbDnd.isChecked = p.getBoolean(Prefs.LOCK_DND, false) && dndAccessGranted()
 
         val feed = Prefs.feedId(p)
-        // Showing the tail of the id keeps it glanceable while still being enough to
-        // spot a capture that grabbed the wrong list.
+        // The learned id used to be shown here as a way to spot a bad capture, but it
+        // reads as "list" on this Instagram, which tells nobody anything. Whether the
+        // right list was captured is answered by scrolling DMs, not by reading an id.
+        //
+        // "set up" rather than "blocked" on purpose: the feed is only actually blocked
+        // while the switch above is on, and this line shows either way.
         tvFeed.text = when {
             Prefs.learning(p) -> "Now scroll your Instagram feed once"
-            feed == null -> "Feed not set up"
-            else -> "Feed blocked: " + feed.substringAfterLast("id/")
+            feed == null -> "Instagram feed not set up"
+            else -> "Instagram feed set up"
         }
         btnLearn.text = if (feed == null) "Set up feed" else "Re-learn feed"
     }
