@@ -70,11 +70,7 @@ class MainActivity : Activity() {
         // in Instagram, which is why the instruction says to scroll the feed itself.
         btnLearn.setOnClickListener {
             Prefs.setFlag(this, Prefs.LEARNING, true)
-            Toast.makeText(
-                this,
-                "Open Instagram, scroll the home feed once, then come back here.",
-                Toast.LENGTH_LONG
-            ).show()
+            Toast.makeText(this, "Scroll your Instagram feed once", Toast.LENGTH_LONG).show()
             refresh()
         }
         cbYoutube.setOnClickListener {
@@ -130,12 +126,14 @@ class MainActivity : Activity() {
         cbDnd.isChecked = p.getBoolean(Prefs.LOCK_DND, false) && dndAccessGranted()
 
         val feed = Prefs.feedId(p)
+        // Showing the tail of the id keeps it glanceable while still being enough to
+        // spot a capture that grabbed the wrong list.
         tvFeed.text = when {
-            Prefs.learning(p) -> "Waiting: open Instagram and scroll the home feed once."
-            feed == null -> "Home feed scrolling is not blocked yet."
-            else -> "Home feed blocked. Learned as " + feed
+            Prefs.learning(p) -> "Now scroll your Instagram feed once"
+            feed == null -> "Feed not set up"
+            else -> "Feed blocked: " + feed.substringAfterLast("id/")
         }
-        btnLearn.text = if (feed == null) "Set up feed blocking" else "Re-learn feed"
+        btnLearn.text = if (feed == null) "Set up feed" else "Re-learn feed"
     }
 
     private fun dndAccessGranted(): Boolean =

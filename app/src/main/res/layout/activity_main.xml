@@ -21,7 +21,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="The accessibility service is off. Nothing is being blocked."
+                android:text="Service is off. Nothing is being blocked."
                 android:textColor="#B00020"
                 android:textStyle="bold" />
 
@@ -45,7 +45,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingBottom="4dp"
-            android:text="Presses back when the full-screen Shorts or Reels player opens, and stops the Instagram home feed scrolling once set up below." />
+            android:text="Backs out of Shorts and Reels, and stops the Instagram feed." />
 
         <Switch
             android:id="@+id/sw_shorts"
@@ -102,7 +102,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingBottom="4dp"
-            android:text="Sends you home whenever a locked app opens." />
+            android:text="Sends you home when a locked app opens." />
 
         <Switch
             android:id="@+id/sw_lock"
@@ -156,7 +156,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingStart="32dp"
-            android:text="Alarms and starred contacts still get through."
+            android:text="Alarms and starred contacts still ring."
             android:textSize="12sp" />
 
     </LinearLayout>

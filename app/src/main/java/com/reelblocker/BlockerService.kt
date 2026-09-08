@@ -37,17 +37,21 @@ class BlockerService : AccessibilityService() {
     // so a locked app cannot spam toasts either.
     private val cooldownMs = 1200L
 
-    // Scrolling back fires another scroll event, so the counter-scroll walks itself up
-    // to the top of the feed and then stops, because scrolling backward at the top
-    // does nothing. The cap is only a backstop for a feed that never reports reaching
-    // the top; the reset window is what re-arms it once scrolling has settled.
-    private val maxScrollBacks = 12
+    // A single page per event never kept up with a fling, so each event rewinds in a
+    // burst instead. performAction reports false once the feed is at the top, which is
+    // what actually ends the burst; the page cap is only a backstop for a feed that
+    // never admits to being at the top.
+    private val maxRewindPages = 10
+
+    // And if events keep arriving without the feed ever reaching the top, stop
+    // rewinding until scrolling goes quiet. Fail open, never loop.
+    private val maxRewinds = 8
     private val scrollResetMs = 2000L
 
     private lateinit var prefs: SharedPreferences
     private var lastActionAt = 0L
     private var lastScrollAt = 0L
-    private var scrollBacks = 0
+    private var rewinds = 0
 
     // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
     // lambda passed inline would be collected and the subscription would silently
@@ -114,12 +118,22 @@ class BlockerService : AccessibilityService() {
         // Scroll events fire throughout a gesture, so they are the priciest tier of
         // all and are only ever asked for while something acts on them: the one-off
         // feed capture, or feed blocking once a feed id has been learned.
-        if (Prefs.learning(prefs) || (shorts && Prefs.feedId(prefs) != null)) {
+        val blockingFeed = shorts && Prefs.feedId(prefs) != null
+        if (Prefs.learning(prefs) || blockingFeed) {
             wanted = wanted or AccessibilityEvent.TYPE_VIEW_SCROLLED
         }
 
-        if (info.eventTypes != wanted || info.packageNames?.contentEquals(packages) != true) {
+        // 500ms of system-side coalescing is the cheap default, but it also meant the
+        // rewind landed half a second after the gesture, which read as broken. Pay for
+        // a shorter one only while the feed is actually being blocked.
+        val timeout = if (blockingFeed) 100L else 500L
+
+        if (info.eventTypes != wanted ||
+            info.notificationTimeout != timeout ||
+            info.packageNames?.contentEquals(packages) != true
+        ) {
             info.eventTypes = wanted
+            info.notificationTimeout = timeout
             info.packageNames = packages
             serviceInfo = info
         }
@@ -200,7 +214,7 @@ class BlockerService : AccessibilityService() {
 
         if (Prefs.learning(prefs)) {
             Prefs.learnFeed(this, id)
-            Toast.makeText(this, "Feed learned. It will stop scrolling now.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Feed set up", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -210,11 +224,19 @@ class BlockerService : AccessibilityService() {
         if (id != Prefs.feedId(prefs)) return
 
         val now = System.currentTimeMillis()
-        if (now - lastScrollAt > scrollResetMs) scrollBacks = 0
+        if (now - lastScrollAt > scrollResetMs) rewinds = 0
         lastScrollAt = now
-        if (scrollBacks >= maxScrollBacks) return
-        scrollBacks++
-        source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+        if (rewinds >= maxRewinds) return
+        rewinds++
+
+        // Rewind the whole way in one burst. One page per event lost to a fling, and
+        // the loop ends by itself as soon as the feed says it cannot go up any further.
+        var pages = 0
+        while (pages < maxRewindPages &&
+            source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+        ) {
+            pages++
+        }
     }
 
     override fun onInterrupt() {}
