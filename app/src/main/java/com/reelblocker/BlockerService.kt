@@ -44,16 +44,17 @@ class BlockerService : AccessibilityService() {
     // it. Our own scroll fires the next event, so the chain walks itself to the top and
     // stops there, because scrolling backward at the top does nothing.
     //
-    // The cap is the backstop for a feed that never reports reaching the top, and it
-    // has to be generous now that each pass covers one page rather than ten. Fail open,
-    // never loop.
-    private val maxRewinds = 40
+    // The backstop counts refusals, not actions. Counting actions meant a fast enough
+    // thumb burned through the budget with real scrolls, and the block then switched
+    // itself off for as long as scrolling continued - hardest exactly when it was
+    // needed most. Only a feed that will not scroll back stops us now.
+    private val maxStalls = 6
     private val scrollResetMs = 2000L
 
     private lateinit var prefs: SharedPreferences
     private var lastActionAt = 0L
     private var lastScrollAt = 0L
-    private var rewinds = 0
+    private var stalls = 0
 
     // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
     // lambda passed inline would be collected and the subscription would silently
@@ -226,11 +227,20 @@ class BlockerService : AccessibilityService() {
         if (id != Prefs.feedId(prefs)) return
 
         val now = System.currentTimeMillis()
-        if (now - lastScrollAt > scrollResetMs) rewinds = 0
+        if (now - lastScrollAt > scrollResetMs) stalls = 0
         lastScrollAt = now
-        if (rewinds >= maxRewinds) return
-        rewinds++
-        rewind(source)
+
+        // fromIndex is the first row still on screen, so zero means the feed is already
+        // at the top. Cheapest possible end to the chain: no action, no IPC.
+        if (event.fromIndex == 0) {
+            stalls = 0
+            return
+        }
+
+        if (stalls >= maxStalls) return
+        // A refused scroll is the only thing that counts against us, and one that works
+        // clears the count. However hard the feed is scrolled, it still gets rewound.
+        if (rewind(source)) stalls = 0 else stalls++
     }
 
     /**
@@ -239,16 +249,19 @@ class BlockerService : AccessibilityService() {
      * Jumping straight to the top is far better than paging when the feed offers it,
      * because there is no animation to fight and a fling cannot outrun a single jump.
      * Not every list implements it, so the paging action stays as the fallback.
+     *
+     * Returns whether the feed accepted the scroll. False means it will not move, which
+     * is the only thing that should ever make us stop trying.
      */
-    private fun rewind(source: AccessibilityNodeInfo) {
+    private fun rewind(source: AccessibilityNodeInfo): Boolean {
         val toTop = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_TO_POSITION
         if (source.actionList.contains(toTop)) {
             val args = Bundle()
             args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_ROW_INT, 0)
             args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_COLUMN_INT, 0)
-            if (source.performAction(toTop.id, args)) return
+            if (source.performAction(toTop.id, args)) return true
         }
-        source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+        return source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
     }
 
     override fun onInterrupt() {}

@@ -74,6 +74,12 @@ animated, so firing several back to back just cancels and restarts the same anim
 and moves about one page in total, which is what let a hard fling outrun an earlier
 version of this.
 
+The runaway backstop counts scrolls the feed *refused*, not scrolls attempted. An
+earlier version capped attempts, so spam-scrolling burned through the budget with real
+scrolls and the block switched itself off for as long as scrolling continued — giving
+up hardest exactly when it was needed most. Only a feed that will not scroll back stops
+it now.
+
 Event coalescing also drops from 500ms to 100ms while a feed is being blocked, because
 at 500ms the rewind landed half a second after the gesture and read as broken. That
 shorter window is the one place this app knowingly trades battery for responsiveness,
