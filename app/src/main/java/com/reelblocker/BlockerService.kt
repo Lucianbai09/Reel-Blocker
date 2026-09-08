@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -37,15 +38,16 @@ class BlockerService : AccessibilityService() {
     // so a locked app cannot spam toasts either.
     private val cooldownMs = 1200L
 
-    // A single page per event never kept up with a fling, so each event rewinds in a
-    // burst instead. performAction reports false once the feed is at the top, which is
-    // what actually ends the burst; the page cap is only a backstop for a feed that
-    // never admits to being at the top.
-    private val maxRewindPages = 10
-
-    // And if events keep arriving without the feed ever reaching the top, stop
-    // rewinding until scrolling goes quiet. Fail open, never loop.
-    private val maxRewinds = 8
+    // One rewind per event, never a tight loop. A backward scroll is animated, so
+    // firing several back to back only cancels and restarts the same animation and
+    // moves about one page in total - which is exactly why a hard fling used to outrun
+    // it. Our own scroll fires the next event, so the chain walks itself to the top and
+    // stops there, because scrolling backward at the top does nothing.
+    //
+    // The cap is the backstop for a feed that never reports reaching the top, and it
+    // has to be generous now that each pass covers one page rather than ten. Fail open,
+    // never loop.
+    private val maxRewinds = 40
     private val scrollResetMs = 2000L
 
     private lateinit var prefs: SharedPreferences
@@ -228,15 +230,25 @@ class BlockerService : AccessibilityService() {
         lastScrollAt = now
         if (rewinds >= maxRewinds) return
         rewinds++
+        rewind(source)
+    }
 
-        // Rewind the whole way in one burst. One page per event lost to a fling, and
-        // the loop ends by itself as soon as the feed says it cannot go up any further.
-        var pages = 0
-        while (pages < maxRewindPages &&
-            source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
-        ) {
-            pages++
+    /**
+     * Moves the feed back up by one step.
+     *
+     * Jumping straight to the top is far better than paging when the feed offers it,
+     * because there is no animation to fight and a fling cannot outrun a single jump.
+     * Not every list implements it, so the paging action stays as the fallback.
+     */
+    private fun rewind(source: AccessibilityNodeInfo) {
+        val toTop = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_TO_POSITION
+        if (source.actionList.contains(toTop)) {
+            val args = Bundle()
+            args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_ROW_INT, 0)
+            args.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_COLUMN_INT, 0)
+            if (source.performAction(toTop.id, args)) return
         }
+        source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
     }
 
     override fun onInterrupt() {}

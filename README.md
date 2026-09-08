@@ -64,12 +64,20 @@ gets learned. If you catch the wrong list, just re-learn.
 While the switch is on, scrolling the feed snaps you back to the top. Everything else
 in Instagram — DMs, search, Explore, profiles — keeps scrolling normally.
 
-The rewind runs as one burst rather than a page at a time, and stops by itself as soon
-as the feed reports it is at the top, so a fling cannot outrun it. Event coalescing
-also drops from 500ms to 100ms while a feed is being blocked, because at 500ms the
-rewind landed half a second after the gesture and read as broken. That shorter window
-is the one place this app knowingly trades battery for responsiveness, and it applies
-only while Block Shorts is on and a feed has been learned.
+The rewind jumps straight to the top where the feed supports that action, and pages up
+one screen at a time where it does not. Each of our own scrolls fires the next scroll
+event, so the chain walks itself to the top and stops there, since scrolling backward
+at the top does nothing.
+
+It is deliberately one action per event and never a tight loop. A backward scroll is
+animated, so firing several back to back just cancels and restarts the same animation
+and moves about one page in total, which is what let a hard fling outrun an earlier
+version of this.
+
+Event coalescing also drops from 500ms to 100ms while a feed is being blocked, because
+at 500ms the rewind landed half a second after the gesture and read as broken. That
+shorter window is the one place this app knowingly trades battery for responsiveness,
+and it applies only while Block Shorts is on and a feed has been learned.
 
 **Back is never pressed on the home feed.** Back there exits Instagram, which is what
 made the earlier attempt at this unusable and why it was removed in 532ac65. Scrolling
