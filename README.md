@@ -1,13 +1,13 @@
 # Reel Blocker
 
 Personal Android app that bounces you out of YouTube Shorts and Instagram Reels, and
-can lock those apps entirely. Built to cost nothing when it isn't blocking.
+can lock YouTube, Instagram and Discord entirely. Built to cost nothing when it isn't blocking.
 
 ## Features
 
 - **Block Shorts / Reels** — presses Back when the full-screen player opens.
 - **Lock apps** — sends you Home with a "Locked" toast when a locked app opens.
-  YouTube and Instagram are toggled separately.
+  YouTube, Instagram and Discord are toggled separately.
 - **Timers** — blank or `0` means stay on until you switch it off; any number is
   minutes until it turns itself off.
 - **Do Not Disturb** — optional; rides along with the lock to make it a study mode.
@@ -53,9 +53,10 @@ above. If an install fails with *"App not installed"*, uninstall the old copy fi
 **There is no `INTERNET` permission.** Android enforces that at the kernel level, so
 this app cannot open a network socket — nothing it sees can leave the phone, ever.
 
-- Sees YouTube and Instagram only; the system filters everything else out before it
-  reaches the app.
-- Stores six values (four booleans, two timestamps) privately, with backup disabled.
+- Sees YouTube, Instagram and Discord only, and only while a toggle needs them; the
+  system filters everything else out before it reaches the app. Discord is dropped
+  from the filter entirely unless the lock is on and its box is ticked.
+- Stores nine values (seven booleans, two timestamps) privately, with backup disabled.
   Screen content is never written down.
 - Can press Back and press Home. That's the whole list of things it can do.
 - No Device Admin, no overlay, no anti-uninstall — uninstall works normally.
@@ -76,6 +77,11 @@ repeating alarms — the accessibility service only executes inside events the O
 it, and it asks the system for **zero** event types when both switches are off.
 
 Timers are an end timestamp checked when something already woke us, not a countdown.
+
+Discord is filtered more tightly than the other two. It is a chat app, so it fires
+content-changed events on every message, and Block Shorts never acts on it. The
+service therefore narrows the package list as well as the event types, and asks to be
+woken for Discord only when the lock is on and its box is ticked.
 The status notification is a plain notification, not a foreground service, so it costs
 one message when state changes and nothing while it's displayed.
 

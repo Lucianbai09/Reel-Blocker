@@ -29,6 +29,7 @@ class MainActivity : Activity() {
     private lateinit var tvLock: TextView
     private lateinit var cbYoutube: CheckBox
     private lateinit var cbInstagram: CheckBox
+    private lateinit var cbDiscord: CheckBox
     private lateinit var cbDnd: CheckBox
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,6 +45,7 @@ class MainActivity : Activity() {
         tvLock = findViewById(R.id.tv_lock)
         cbYoutube = findViewById(R.id.cb_youtube)
         cbInstagram = findViewById(R.id.cb_instagram)
+        cbDiscord = findViewById(R.id.cb_discord)
         cbDnd = findViewById(R.id.cb_dnd)
 
         findViewById<Button>(R.id.btn_settings).setOnClickListener {
@@ -65,6 +67,9 @@ class MainActivity : Activity() {
         }
         cbInstagram.setOnClickListener {
             Prefs.setFlag(this, Prefs.LOCK_INSTAGRAM, cbInstagram.isChecked)
+        }
+        cbDiscord.setOnClickListener {
+            Prefs.setFlag(this, Prefs.LOCK_DISCORD, cbDiscord.isChecked)
         }
         cbDnd.setOnClickListener {
             // Refuse to store it until access exists, so the checkbox never claims
@@ -105,6 +110,7 @@ class MainActivity : Activity() {
         tvLock.text = statusText(p, Prefs.LOCK_ON, Prefs.LOCK_UNTIL)
         cbYoutube.isChecked = p.getBoolean(Prefs.LOCK_YOUTUBE, true)
         cbInstagram.isChecked = p.getBoolean(Prefs.LOCK_INSTAGRAM, true)
+        cbDiscord.isChecked = p.getBoolean(Prefs.LOCK_DISCORD, true)
         // Access can be revoked in Settings, so this is re-checked rather than trusted.
         cbDnd.isChecked = p.getBoolean(Prefs.LOCK_DND, false) && dndAccessGranted()
     }

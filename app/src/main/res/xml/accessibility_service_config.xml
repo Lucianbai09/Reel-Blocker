@@ -4,8 +4,12 @@
 
      packageNames is the single biggest battery saving in the app: the system filters
      on it BEFORE any IPC into our process, so events from every other app on the
-     phone cost us literally nothing. Add a third app by editing this line (and the
+     phone cost us literally nothing. Add another app by editing this line (and the
      package constants in Prefs.kt).
+
+     This is the maximum set; the service narrows it further at runtime to only the
+     apps a live feature can act on, which is what keeps Discord out of the filter
+     unless it is actually locked.
 
      notificationTimeout=500 makes the system coalesce content-changed events to at
      most one per 500ms, on its side, so scrolling a feed cannot flood us. -->
@@ -16,4 +20,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/service_description"
     android:notificationTimeout="500"
-    android:packageNames="com.google.android.youtube,com.instagram.android" />
+    android:packageNames="com.google.android.youtube,com.instagram.android,com.discord" />

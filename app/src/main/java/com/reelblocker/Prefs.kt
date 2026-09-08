@@ -18,6 +18,10 @@ object Prefs {
 
     const val YOUTUBE = "com.google.android.youtube"
     const val INSTAGRAM = "com.instagram.android"
+    const val DISCORD = "com.discord"
+
+    /** Everything the lock can cover. Discord is lock-only; it has no feed to skip. */
+    private val LOCKABLE = listOf(YOUTUBE, INSTAGRAM, DISCORD)
 
     private const val FILE = "reelblocker"
 
@@ -27,6 +31,7 @@ object Prefs {
     const val LOCK_UNTIL = "lock_until"
     const val LOCK_YOUTUBE = "lock_youtube"
     const val LOCK_INSTAGRAM = "lock_instagram"
+    const val LOCK_DISCORD = "lock_discord"
     const val LOCK_DND = "lock_dnd"
 
     // Bookkeeping, not a setting: remembers whether WE turned Do Not Disturb on, so
@@ -54,7 +59,28 @@ object Prefs {
     fun lockedApp(p: SharedPreferences, pkg: String): Boolean = when (pkg) {
         YOUTUBE -> p.getBoolean(LOCK_YOUTUBE, true)
         INSTAGRAM -> p.getBoolean(LOCK_INSTAGRAM, true)
+        DISCORD -> p.getBoolean(LOCK_DISCORD, true)
         else -> false
+    }
+
+    /**
+     * The apps worth being woken for right now, which the service hands to
+     * setServiceInfo() alongside eventTypes.
+     *
+     * Discord earns a filter of its own: it is a chat app, so it fires
+     * content-changed on every message, where YouTube and Instagram sitting idle do
+     * not. Blocking never acts on Discord, so leaving it in the filter while only
+     * that toggle was on would mean a wakeup per message for nothing. It is included
+     * only when the lock is on and its box is ticked.
+     */
+    fun watchedPackages(p: SharedPreferences, shorts: Boolean, lock: Boolean): Array<String> {
+        val pkgs = linkedSetOf<String>()
+        if (shorts) {
+            pkgs += YOUTUBE
+            pkgs += INSTAGRAM
+        }
+        if (lock) LOCKABLE.filterTo(pkgs) { lockedApp(p, it) }
+        return pkgs.toTypedArray()
     }
 
     /** minutes <= 0 means no timer. */

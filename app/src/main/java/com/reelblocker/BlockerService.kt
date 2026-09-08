@@ -73,27 +73,37 @@ class BlockerService : AccessibilityService() {
     }
 
     /**
-     * Asks the system for the minimum event set the currently-active features need.
-     * With both toggles off this is 0 - subscribed to nothing, which is the point.
+     * Asks the system for the minimum the currently-active features need: both the
+     * event types and the list of apps. With both toggles off that is 0 event types -
+     * subscribed to nothing, which is the point.
      *
-     * Reads the live serviceInfo and mutates only eventTypes, so packageNames and the
+     * Narrowing packageNames as well as eventTypes is what keeps Discord out of the
+     * filter unless the lock can actually act on it; see Prefs.watchedPackages(). The
      * flags from accessibility_service_config.xml survive untouched.
      */
     private fun applyEventTypes() {
         val info = serviceInfo ?: return
+        val shorts = Prefs.shortsActive(prefs)
+        val lock = Prefs.lockActive(prefs)
+        val packages = Prefs.watchedPackages(prefs, shorts, lock)
+
         val wanted = when {
+            // Nothing left to watch. Say "no events" outright rather than leaning on
+            // how the framework reads an empty package filter.
+            packages.isEmpty() -> 0
             // Shorts detection needs content-changed: YouTube opens Shorts inside its
             // existing window, so entering the feed often fires no window-state event
             // at all. This is the expensive tier and it is only ever on while the
             // Shorts toggle is active.
-            Prefs.shortsActive(prefs) ->
+            shorts ->
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             // Opening an app always changes the window, so the lock needs no more.
-            Prefs.lockActive(prefs) -> AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            else -> 0
+            else -> AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         }
-        if (info.eventTypes != wanted) {
+
+        if (info.eventTypes != wanted || info.packageNames?.contentEquals(packages) != true) {
             info.eventTypes = wanted
+            info.packageNames = packages
             serviceInfo = info
         }
     }
@@ -102,7 +112,7 @@ class BlockerService : AccessibilityService() {
         // Cheapest test first. packageName is already in the event object and costs
         // nothing; nothing that costs an IPC happens above this line.
         val pkg = event.packageName?.toString() ?: return
-        if (pkg != Prefs.YOUTUBE && pkg != Prefs.INSTAGRAM) return
+        if (pkg != Prefs.YOUTUBE && pkg != Prefs.INSTAGRAM && pkg != Prefs.DISCORD) return
 
         val shorts = Prefs.shortsActive(prefs)
         val lock = Prefs.lockActive(prefs)
@@ -125,6 +135,10 @@ class BlockerService : AccessibilityService() {
         }
 
         if (!shorts) return
+
+        // Discord is lock-only: there is no feed to skip there, so stop before
+        // spending a rootInActiveWindow on ids that could never match.
+        if (pkg == Prefs.DISCORD) return
 
         // One rootInActiveWindow, then at most two indexed id lookups. These resolve
         // inside the target app's process and are not a tree walk. Never make this a
