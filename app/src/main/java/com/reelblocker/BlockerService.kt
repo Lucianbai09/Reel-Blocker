@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.SharedPreferences
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 
 /**
@@ -36,8 +37,17 @@ class BlockerService : AccessibilityService() {
     // so a locked app cannot spam toasts either.
     private val cooldownMs = 1200L
 
+    // Scrolling back fires another scroll event, so the counter-scroll walks itself up
+    // to the top of the feed and then stops, because scrolling backward at the top
+    // does nothing. The cap is only a backstop for a feed that never reports reaching
+    // the top; the reset window is what re-arms it once scrolling has settled.
+    private val maxScrollBacks = 12
+    private val scrollResetMs = 2000L
+
     private lateinit var prefs: SharedPreferences
     private var lastActionAt = 0L
+    private var lastScrollAt = 0L
+    private var scrollBacks = 0
 
     // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
     // lambda passed inline would be collected and the subscription would silently
@@ -87,7 +97,7 @@ class BlockerService : AccessibilityService() {
         val lock = Prefs.lockActive(prefs)
         val packages = Prefs.watchedPackages(prefs, shorts, lock)
 
-        val wanted = when {
+        var wanted = when {
             // Nothing left to watch. Say "no events" outright rather than leaning on
             // how the framework reads an empty package filter.
             packages.isEmpty() -> 0
@@ -99,6 +109,13 @@ class BlockerService : AccessibilityService() {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             // Opening an app always changes the window, so the lock needs no more.
             else -> AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        }
+
+        // Scroll events fire throughout a gesture, so they are the priciest tier of
+        // all and are only ever asked for while something acts on them: the one-off
+        // feed capture, or feed blocking once a feed id has been learned.
+        if (Prefs.learning(prefs) || (shorts && Prefs.feedId(prefs) != null)) {
+            wanted = wanted or AccessibilityEvent.TYPE_VIEW_SCROLLED
         }
 
         if (info.eventTypes != wanted || info.packageNames?.contentEquals(packages) != true) {
@@ -113,6 +130,14 @@ class BlockerService : AccessibilityService() {
         // nothing; nothing that costs an IPC happens above this line.
         val pkg = event.packageName?.toString() ?: return
         if (pkg != Prefs.YOUTUBE && pkg != Prefs.INSTAGRAM && pkg != Prefs.DISCORD) return
+
+        // Scroll events take their own path. They are the only way to stop the
+        // Instagram home feed, and also how the feed teaches us its id. Handled before
+        // the expiry check below because a capture can run with both toggles off.
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            onScrolled(event, pkg)
+            return
+        }
 
         val shorts = Prefs.shortsActive(prefs)
         val lock = Prefs.lockActive(prefs)
@@ -156,6 +181,40 @@ class BlockerService : AccessibilityService() {
                 return
             }
         }
+    }
+
+    /**
+     * Stops the Instagram home feed by scrolling it back, never by pressing Back:
+     * Back on the home feed exits Instagram, which is what made the earlier attempt at
+     * this unusable.
+     *
+     * The home feed is a list like any other, so the only thing separating it from the
+     * DM list, search results or a profile grid is the view id of whatever is being
+     * scrolled. Those ids are Instagram's to rename, so the app learns the id from a
+     * single real scroll rather than shipping a guess.
+     */
+    private fun onScrolled(event: AccessibilityEvent, pkg: String) {
+        if (pkg != Prefs.INSTAGRAM) return
+        val source = event.source ?: return
+        val id = source.viewIdResourceName ?: return
+
+        if (Prefs.learning(prefs)) {
+            Prefs.learnFeed(this, id)
+            Toast.makeText(this, "Feed learned. It will stop scrolling now.", Toast.LENGTH_LONG).show()
+            return
+        }
+
+        if (!Prefs.shortsActive(prefs)) return
+        // Anything that is not the learned feed keeps scrolling normally, which is what
+        // leaves DMs, search and profiles usable.
+        if (id != Prefs.feedId(prefs)) return
+
+        val now = System.currentTimeMillis()
+        if (now - lastScrollAt > scrollResetMs) scrollBacks = 0
+        lastScrollAt = now
+        if (scrollBacks >= maxScrollBacks) return
+        scrollBacks++
+        source.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
     }
 
     override fun onInterrupt() {}

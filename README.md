@@ -5,7 +5,8 @@ can lock YouTube, Instagram and Discord entirely. Built to cost nothing when it 
 
 ## Features
 
-- **Block Shorts / Reels** — presses Back when the full-screen player opens.
+- **Block Shorts / Reels** — presses Back when the full-screen player opens, and
+  stops the Instagram home feed from scrolling. Needs a one-time setup tap, below.
 - **Lock apps** — sends you Home with a "Locked" toast when a locked app opens.
   YouTube, Instagram and Discord are toggled separately.
 - **Timers** — blank or `0` means stay on until you switch it off; any number is
@@ -43,6 +44,30 @@ To stop everything: turn the switches off, or
 Note that **Lock apps takes priority over Block Shorts** — if YouTube is locked, you
 get sent home before Shorts detection ever runs.
 
+## Setting up Instagram feed blocking
+
+The home feed is a list like any other, so the only thing separating it from your DMs,
+search results or a profile grid is the view id of whatever is being scrolled. Those
+ids belong to Instagram and get renamed, so the app learns yours instead of shipping a
+guess that would silently block the wrong list.
+
+1. Open Reel Blocker and tap **Set up feed blocking**.
+2. Open Instagram, land on the home feed, and scroll it once.
+3. Come back. The line under the switch should read `Home feed blocked. Learned as ...`
+
+That is it, and it survives updates to Reel Blocker. If Instagram renames the feed and
+scrolling starts working again, tap **Re-learn feed** and repeat.
+
+Scroll the home feed and nothing else during step 2 — whatever you scroll first is what
+gets learned. If you catch the wrong list, just re-learn.
+
+While the switch is on, scrolling the feed snaps you back to the top. Everything else
+in Instagram — DMs, search, Explore, profiles — keeps scrolling normally.
+
+**Back is never pressed on the home feed.** Back there exits Instagram, which is what
+made the earlier attempt at this unusable and why it was removed in 532ac65. Scrolling
+back is the only action that stops the feed without throwing you out of the app.
+
 ## Updating
 
 Push to `main`. GitHub rebuilds the APK and replaces the release; re-tap the link
@@ -77,6 +102,11 @@ repeating alarms — the accessibility service only executes inside events the O
 it, and it asks the system for **zero** event types when both switches are off.
 
 Timers are an end timestamp checked when something already woke us, not a countdown.
+
+Scroll events are the priciest tier, since they fire throughout a gesture rather than
+once per screen. They are only ever subscribed to while something acts on them: the
+one-off feed capture, or feed blocking once a feed id has been learned. Leave feed
+blocking unconfigured and the app never asks for a scroll event at all.
 
 Discord is filtered more tightly than the other two. It is a chat app, so it fires
 content-changed events on every message, and Block Shorts never acts on it. The

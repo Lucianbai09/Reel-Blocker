@@ -38,6 +38,13 @@ object Prefs {
     // turning the lock off never clears a Do Not Disturb the user set themselves.
     const val DND_SET_BY_US = "dnd_set_by_us"
 
+    // The view id of the Instagram home feed, learned from the phone rather than
+    // hardcoded. Instagram renames these, and telling the home feed apart from the DM
+    // list or search results is only possible by id, so a shipped guess would quietly
+    // stop working or block the wrong list. LEARNING arms a one-off capture.
+    const val FEED_ID = "feed_id"
+    const val LEARNING = "learning"
+
     // Distinct request codes keep the two alarms independent; cancelling one must
     // not cancel the other.
     private const val REQ_SHORTS = 1
@@ -55,6 +62,15 @@ object Prefs {
     fun shortsActive(p: SharedPreferences) = active(p, SHORTS_ON, SHORTS_UNTIL)
 
     fun lockActive(p: SharedPreferences) = active(p, LOCK_ON, LOCK_UNTIL)
+
+    fun feedId(p: SharedPreferences): String? = p.getString(FEED_ID, null)
+
+    fun learning(p: SharedPreferences) = p.getBoolean(LEARNING, false)
+
+    /** Stores the id captured from one scroll, and ends the capture. */
+    fun learnFeed(c: Context, id: String) {
+        get(c).edit().putString(FEED_ID, id).putBoolean(LEARNING, false).apply()
+    }
 
     fun lockedApp(p: SharedPreferences, pkg: String): Boolean = when (pkg) {
         YOUTUBE -> p.getBoolean(LOCK_YOUTUBE, true)
@@ -80,6 +96,8 @@ object Prefs {
             pkgs += INSTAGRAM
         }
         if (lock) LOCKABLE.filterTo(pkgs) { lockedApp(p, it) }
+        // A capture in progress needs Instagram events even with both toggles off.
+        if (learning(p)) pkgs += INSTAGRAM
         return pkgs.toTypedArray()
     }
 

@@ -24,6 +24,8 @@ class MainActivity : Activity() {
     private lateinit var swShorts: Switch
     private lateinit var etShorts: EditText
     private lateinit var tvShorts: TextView
+    private lateinit var tvFeed: TextView
+    private lateinit var btnLearn: Button
     private lateinit var swLock: Switch
     private lateinit var etLock: EditText
     private lateinit var tvLock: TextView
@@ -40,6 +42,8 @@ class MainActivity : Activity() {
         swShorts = findViewById(R.id.sw_shorts)
         etShorts = findViewById(R.id.et_shorts)
         tvShorts = findViewById(R.id.tv_shorts)
+        tvFeed = findViewById(R.id.tv_feed)
+        btnLearn = findViewById(R.id.btn_learn)
         swLock = findViewById(R.id.sw_lock)
         etLock = findViewById(R.id.et_lock)
         tvLock = findViewById(R.id.tv_lock)
@@ -60,6 +64,17 @@ class MainActivity : Activity() {
         }
         swLock.setOnClickListener {
             Prefs.setLock(this, swLock.isChecked, minutes(etLock))
+            refresh()
+        }
+        // Arms a one-off capture. The service saves the id of the first thing scrolled
+        // in Instagram, which is why the instruction says to scroll the feed itself.
+        btnLearn.setOnClickListener {
+            Prefs.setFlag(this, Prefs.LEARNING, true)
+            Toast.makeText(
+                this,
+                "Open Instagram, scroll the home feed once, then come back here.",
+                Toast.LENGTH_LONG
+            ).show()
             refresh()
         }
         cbYoutube.setOnClickListener {
@@ -113,6 +128,14 @@ class MainActivity : Activity() {
         cbDiscord.isChecked = p.getBoolean(Prefs.LOCK_DISCORD, true)
         // Access can be revoked in Settings, so this is re-checked rather than trusted.
         cbDnd.isChecked = p.getBoolean(Prefs.LOCK_DND, false) && dndAccessGranted()
+
+        val feed = Prefs.feedId(p)
+        tvFeed.text = when {
+            Prefs.learning(p) -> "Waiting: open Instagram and scroll the home feed once."
+            feed == null -> "Home feed scrolling is not blocked yet."
+            else -> "Home feed blocked. Learned as " + feed
+        }
+        btnLearn.text = if (feed == null) "Set up feed blocking" else "Re-learn feed"
     }
 
     private fun dndAccessGranted(): Boolean =
