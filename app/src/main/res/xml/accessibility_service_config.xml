@@ -9,7 +9,11 @@
 
      This is the maximum set; the service narrows it further at runtime to only the
      apps a live feature can act on, which is what keeps Discord out of the filter
-     unless it is actually locked.
+     unless it is actually locked, and TikTok out until its feed has been set up.
+
+     TikTok is listed twice on purpose: the worldwide build and the build shipped in
+     some regions and as TikTok Lite use different package names, and which one is
+     installed is not knowable from here.
 
      notificationTimeout=500 makes the system coalesce content-changed events to at
      most one per 500ms, on its side, so scrolling a feed cannot flood us. -->
@@ -20,4 +24,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/service_description"
     android:notificationTimeout="500"
-    android:packageNames="com.google.android.youtube,com.instagram.android,com.discord" />
+    android:packageNames="com.google.android.youtube,com.instagram.android,com.discord,com.zhiliaoapp.musically,com.ss.android.ugc.trill" />

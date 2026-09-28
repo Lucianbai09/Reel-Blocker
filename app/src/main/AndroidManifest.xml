@@ -40,7 +40,7 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Fired once per timer end. No intent-filter: it is only ever reached by
+        <!-- Fired once when a pause runs out. No intent-filter: it is only ever reached by
              an explicit PendingIntent from our own AlarmManager call. -->
         <receiver
             android:name=".ExpiryReceiver"

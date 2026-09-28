@@ -26,6 +26,11 @@ class BlockerService : AccessibilityService() {
     // every event. clips_video_container and reel_recycler were both removed for
     // also matching feed-embedded Reels and the Shorts shelf, which turned scrolling
     // a home feed into an inescapable back-press loop.
+    //
+    // There is deliberately no TikTok id here. TikTok has no player to back out of -
+    // the feed IS the player - so pressing Back would just leave the app. TikTok is
+    // handled entirely by the feed rewind below, the same way the Instagram home feed
+    // is, which is what leaves Inbox and Profile reachable.
     private val shortsViewIds = arrayOf(
         "com.google.android.youtube:id/reel_player_underlay",
         "com.google.android.youtube:id/reel_progress_bar",
@@ -95,28 +100,38 @@ class BlockerService : AccessibilityService() {
 
     /**
      * Asks the system for the minimum the currently-active features need: both the
-     * event types and the list of apps. With both toggles off that is 0 event types -
+     * event types and the list of apps. With both switches off that is 0 event types -
      * subscribed to nothing, which is the point.
      *
      * Narrowing packageNames as well as eventTypes is what keeps Discord out of the
-     * filter unless the lock can actually act on it; see Prefs.watchedPackages(). The
-     * flags from accessibility_service_config.xml survive untouched.
+     * filter unless the lock can actually act on it, and TikTok out until a feed id has
+     * been learned; see Prefs.watchedPackages(). The flags from
+     * accessibility_service_config.xml survive untouched.
      */
     private fun applyEventTypes() {
         val info = serviceInfo ?: return
-        val shorts = Prefs.shortsActive(prefs)
-        val lock = Prefs.lockActive(prefs)
-        val packages = Prefs.watchedPackages(prefs, shorts, lock)
+        val paused = Prefs.paused(prefs)
+        // The switch positions, not whether they are acting: a pause changes the tier
+        // we listen at, not which apps we care about.
+        val shortsOn = prefs.getBoolean(Prefs.SHORTS_ON, false)
+        val lockOn = prefs.getBoolean(Prefs.LOCK_ON, false)
+        val packages = Prefs.watchedPackages(prefs, shortsOn, lockOn)
 
         var wanted = when {
             // Nothing left to watch. Say "no events" outright rather than leaning on
             // how the framework reads an empty package filter.
             packages.isEmpty() -> 0
+            // Paused. The only thing left worth hearing is that the pause has ended,
+            // and a window change carries that. It costs one event per switch into a
+            // blocked app, during a pause that was asked for, and buys the guarantee
+            // that blocking can never stay off past its deadline just because an
+            // inexact alarm ran late.
+            paused -> AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             // Shorts detection needs content-changed: YouTube opens Shorts inside its
             // existing window, so entering the feed often fires no window-state event
             // at all. This is the expensive tier and it is only ever on while the
-            // Shorts toggle is active.
-            shorts ->
+            // Shorts switch is on and nothing is paused.
+            shortsOn ->
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             // Opening an app always changes the window, so the lock needs no more.
             else -> AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
@@ -124,9 +139,15 @@ class BlockerService : AccessibilityService() {
 
         // Scroll events fire throughout a gesture, so they are the priciest tier of
         // all and are only ever asked for while something acts on them: the one-off
-        // feed capture, or feed blocking once a feed id has been learned.
-        val blockingFeed = shorts && Prefs.feedId(prefs) != null
-        if (Prefs.learning(prefs) || blockingFeed) {
+        // feed capture, or feed blocking once a feed id has been learned. A capture is
+        // setup rather than blocking, so a pause does not stop it.
+        // Guarded on wanted != 0 for the same reason that branch above exists: never
+        // hand the framework event types alongside an empty package filter. It cannot
+        // currently bite, because watchedPackages() always includes the app being
+        // captured - the guard is what makes "no packages" mean "no events" by
+        // construction rather than by coincidence.
+        val blockingFeed = !paused && shortsOn && Prefs.anyFeedLearned(prefs)
+        if (wanted != 0 && (Prefs.learningFor(prefs) != null || blockingFeed)) {
             wanted = wanted or AccessibilityEvent.TYPE_VIEW_SCROLLED
         }
 
@@ -137,8 +158,8 @@ class BlockerService : AccessibilityService() {
         // un-throttles content-changed - and that handler fetches the whole window root
         // plus id lookups. Leaving it short everywhere meant watching a YouTube video
         // cost five times the root fetches for a feature YouTube cannot even use. So it
-        // is short only while Instagram is the app actually on screen.
-        val timeout = if (blockingFeed && foreground == Prefs.INSTAGRAM) 100L else 500L
+        // is short only while the app actually on screen is one whose feed we can rewind.
+        val timeout = if (blockingFeed && Prefs.feedId(prefs, foreground) != null) 100L else 500L
 
         if (info.eventTypes != wanted ||
             info.notificationTimeout != timeout ||
@@ -155,7 +176,7 @@ class BlockerService : AccessibilityService() {
         // Cheapest test first. packageName is already in the event object and costs
         // nothing; nothing that costs an IPC happens above this line.
         val pkg = event.packageName?.toString() ?: return
-        if (pkg != Prefs.YOUTUBE && pkg != Prefs.INSTAGRAM && pkg != Prefs.DISCORD) return
+        if (!Prefs.watched(pkg)) return
 
         // Track which watched app is on screen so the throttle can follow it. Costs one
         // setServiceInfo per switch between watched apps, and nothing otherwise.
@@ -164,9 +185,16 @@ class BlockerService : AccessibilityService() {
             applyEventTypes()
         }
 
+        // A pause that has run out. One long read, so it is affordable on every event,
+        // and it writes exactly once because the write is what makes it stop being
+        // true. The write puts the subscription and the notification back through the
+        // prefs listener, so blocking resumes here without waiting for the alarm.
+        if (Prefs.pauseExpired(prefs)) Prefs.clearExpired(this)
+
         // Scroll events take their own path. They are the only way to stop the
-        // Instagram home feed, and also how the feed teaches us its id. Handled before
-        // the expiry check below because a capture can run with both toggles off.
+        // Instagram home feed or the TikTok feed, and also how a feed teaches us its
+        // id. Handled before the active check below because a capture can run with both
+        // switches off, or while paused.
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
             onScrolled(event, pkg)
             return
@@ -175,9 +203,8 @@ class BlockerService : AccessibilityService() {
         val shorts = Prefs.shortsActive(prefs)
         val lock = Prefs.lockActive(prefs)
         if (!shorts && !lock) {
-            // A timer ran out and the inexact alarm has not landed yet. We were woken
-            // anyway, so drop the subscription now rather than waiting for it.
-            Prefs.clearExpired(this)
+            // Either paused, or switched off. Re-asking for the right tier is all that
+            // is needed; the call is a no-op unless something actually changed.
             applyEventTypes()
             return
         }
@@ -188,15 +215,18 @@ class BlockerService : AccessibilityService() {
         if (lock && Prefs.lockedApp(prefs, pkg)) {
             lastActionAt = now
             performGlobalAction(GLOBAL_ACTION_HOME)
-            Toast.makeText(this, lockToast(), Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Locked", Toast.LENGTH_SHORT).show()
             return
         }
 
         if (!shorts) return
 
-        // Discord is lock-only: there is no feed to skip there, so stop before
-        // spending a rootInActiveWindow on ids that could never match.
-        if (pkg == Prefs.DISCORD) return
+        // Neither Discord nor TikTok has a full-screen player to back out of, so no id
+        // above could ever match them. Asking the id list rather than naming the two
+        // apps keeps this from going stale when that list changes, and stops them
+        // costing a rootInActiveWindow per event. none() is inline, so this is a plain
+        // loop over three strings with nothing allocated.
+        if (shortsViewIds.none { it.startsWith(pkg) }) return
 
         // One rootInActiveWindow, then at most two indexed id lookups. These resolve
         // inside the target app's process and are not a tree walk. Never make this a
@@ -217,33 +247,46 @@ class BlockerService : AccessibilityService() {
     }
 
     /**
-     * Stops the Instagram home feed by scrolling it back, never by pressing Back:
-     * Back on the home feed exits Instagram, which is what made the earlier attempt at
-     * this unusable.
+     * Stops the Instagram home feed and the TikTok feed by scrolling them back, never
+     * by pressing Back: Back on either exits the app, which is what made the earlier
+     * attempt at this unusable.
      *
-     * The home feed is a list like any other, so the only thing separating it from the
-     * DM list, search results or a profile grid is the view id of whatever is being
-     * scrolled. Those ids are Instagram's to rename, so the app learns the id from a
-     * single real scroll rather than shipping a guess.
+     * Both are lists like any other, so the only thing separating them from the DM
+     * list, search results or a profile grid is the view id of whatever is being
+     * scrolled. Those ids are the apps' to rename, so each one is learned from a single
+     * real scroll rather than shipping a guess.
+     *
+     * On TikTok this is the whole of the block: the feed rewinds to the first video and
+     * will not move off it, while Inbox, Profile and search are never touched.
      */
     private fun onScrolled(event: AccessibilityEvent, pkg: String) {
-        if (pkg != Prefs.INSTAGRAM) return
+        // YouTube and Discord have no feed to rewind.
+        val key = Prefs.feedKey(pkg) ?: return
+        val capturing = Prefs.learningFor(prefs) == key
+        val learned = if (Prefs.shortsActive(prefs)) prefs.getString(key, null) else null
+
+        // Nothing to capture and nothing to compare against - the other app's feed is
+        // set up but not this one, or blocking is paused. A few in-memory reads are what
+        // buys this exit, and what it avoids is event.source below, which is a node
+        // fetch over IPC and the only expensive thing on this path.
+        if (!capturing && learned == null) return
+
         val source = event.source ?: return
         val id = source.viewIdResourceName ?: return
 
-        if (Prefs.learning(prefs)) {
-            Prefs.learnFeed(this, id)
-            Toast.makeText(this, "Feed set up", Toast.LENGTH_SHORT).show()
+        if (capturing) {
+            Prefs.learnFeed(this, key, id)
+            Toast.makeText(this, Prefs.feedLabel(key) + " feed set up", Toast.LENGTH_SHORT).show()
             return
         }
 
-        if (!Prefs.shortsActive(prefs)) return
         // Anything that is not the learned feed keeps scrolling normally, which is what
         // leaves DMs, search and profiles usable.
-        if (id != Prefs.feedId(prefs)) return
+        if (id != learned) return
 
         // fromIndex is the first row still on screen, so zero means the feed is already
-        // at the top. Cheapest possible end to the chain: no action, no IPC.
+        // at the top - on TikTok, that it is on the first video. Cheapest possible end
+        // to the chain: no action, no IPC.
         if (event.fromIndex == 0) {
             stalls = 0
             return
@@ -290,8 +333,6 @@ class BlockerService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    private fun lockToast() = "Locked" + Prefs.untilText(this, prefs.getLong(Prefs.LOCK_UNTIL, 0L))
-
     // ---- status notification -----------------------------------------------
     // A plain notification, NOT a foreground service. Once posted it is owned by the
     // system and drawn by SystemUI; this process can be killed and it stays up. So it
@@ -309,48 +350,51 @@ class BlockerService : AccessibilityService() {
 
     private fun updateNotification() {
         val nm = notifications() ?: return
-        val shorts = Prefs.shortsActive(prefs)
-        val lock = Prefs.lockActive(prefs)
-        if (!shorts && !lock) {
+        // Switch positions, so the notification keeps explaining itself through a pause
+        // rather than vanishing and looking like everything was turned off.
+        val shortsOn = prefs.getBoolean(Prefs.SHORTS_ON, false)
+        val lockOn = prefs.getBoolean(Prefs.LOCK_ON, false)
+        if (!shortsOn && !lockOn) {
             nm.cancel(NOTIF_ID)
             return
         }
 
-        // Collapsed line stays short. The deadlines live in the expanded view, which
-        // also means a notification left stale by a late alarm explains itself.
-        val summary = listOfNotNull(
-            if (shorts) "Blocking scrolling" else null,
-            if (lock) "Apps locked" else null
+        val what = listOfNotNull(
+            if (shortsOn) "Blocking scrolling" else null,
+            if (lockOn) "Apps locked" else null
         ).joinToString(" · ")
-
-        val detail = listOfNotNull(
-            if (shorts) "Blocking scrolling" + deadline(Prefs.SHORTS_UNTIL) else null,
-            if (lock) "Apps locked" + deadline(Prefs.LOCK_UNTIL) else null
-        ).joinToString("\n")
 
         val tap = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        nm.notify(
-            NOTIF_ID,
-            Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_x)
-                .setContentTitle("Reel Blocker")
-                .setContentText(summary)
-                .setStyle(Notification.BigTextStyle().bigText(detail))
-                .setContentIntent(tap)
-                .setOngoing(true)     // not swipeable, the way a VPN notification behaves
-                .setShowWhen(false)
-                .build()
-        )
-    }
+        val b = Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_x)
+            .setContentTitle("Reel Blocker")
+            .setContentIntent(tap)
+            .setOngoing(true)     // not swipeable, the way a VPN notification behaves
 
-    /** " until 3:45 PM", or " until you turn it off" when there is no timer. */
-    private fun deadline(key: String): String {
-        val until = prefs.getLong(key, 0L)
-        return if (until == 0L) " until you turn it off" else Prefs.untilText(this, until)
+        val until = prefs.getLong(Prefs.PAUSE_UNTIL, 0L)
+        if (Prefs.paused(prefs)) {
+            // The countdown is drawn and ticked by SystemUI from this one timestamp, so
+            // it costs this process nothing: posted once when the pause starts, never
+            // updated, and it keeps counting even if this process is killed.
+            val time = Prefs.timeText(this, until)
+            b.setContentText("Paused until $time")
+                .setStyle(Notification.BigTextStyle().bigText("$what, paused until $time."))
+                .setShowWhen(true)
+                .setWhen(until)
+                .setUsesChronometer(true)
+                .setChronometerCountDown(true)
+        } else {
+            // Collapsed line stays short; the expanded view carries the detail.
+            b.setContentText(what)
+                .setStyle(Notification.BigTextStyle().bigText("$what until you turn it off."))
+                .setShowWhen(false)
+        }
+
+        nm.notify(NOTIF_ID, b.build())
     }
 
     // ---- do not disturb ----------------------------------------------------

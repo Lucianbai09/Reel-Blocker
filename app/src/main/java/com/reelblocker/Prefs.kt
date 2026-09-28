@@ -9,9 +9,9 @@ import android.text.format.DateFormat
 import java.util.Date
 
 /**
- * All state, the one timer rule, and the two one-shot alarms.
+ * All state, the one pause rule, and the one one-shot alarm.
  *
- * Nothing in here polls or runs on an interval. A timer is just an end timestamp
+ * Nothing in here polls or runs on an interval. The pause is just an end timestamp
  * that gets compared against the clock at the moment something else already woke us.
  */
 object Prefs {
@@ -20,149 +20,197 @@ object Prefs {
     const val INSTAGRAM = "com.instagram.android"
     const val DISCORD = "com.discord"
 
-    /** Everything the lock can cover. Discord is lock-only; it has no feed to skip. */
-    private val LOCKABLE = listOf(YOUTUBE, INSTAGRAM, DISCORD)
+    // Two package names for one app: the worldwide build, and the build shipped in
+    // some regions and as TikTok Lite. Which one is installed is not knowable from
+    // here, so both are carried everywhere and both answer to the one TikTok toggle.
+    const val TIKTOK = "com.zhiliaoapp.musically"
+    const val TIKTOK_ALT = "com.ss.android.ugc.trill"
+
+    /** Every app the service ever acts on, which is also the lock's full menu. */
+    private val APPS = listOf(YOUTUBE, INSTAGRAM, DISCORD, TIKTOK, TIKTOK_ALT)
 
     private const val FILE = "reelblocker"
 
     const val SHORTS_ON = "shorts_on"
-    const val SHORTS_UNTIL = "shorts_until"
     const val LOCK_ON = "lock_on"
-    const val LOCK_UNTIL = "lock_until"
     const val LOCK_YOUTUBE = "lock_youtube"
     const val LOCK_INSTAGRAM = "lock_instagram"
     const val LOCK_DISCORD = "lock_discord"
+    const val LOCK_TIKTOK = "lock_tiktok"
     const val LOCK_DND = "lock_dnd"
+
+    /**
+     * When the pause ends, or 0 for "not paused".
+     *
+     * This one timestamp is the whole unlock feature. The switches stay armed and
+     * simply stop acting until the clock passes it, so there is no state to restore
+     * afterwards and nothing to get out of step.
+     */
+    const val PAUSE_UNTIL = "pause_until"
 
     // Bookkeeping, not a setting: remembers whether WE turned Do Not Disturb on, so
     // turning the lock off never clears a Do Not Disturb the user set themselves.
     const val DND_SET_BY_US = "dnd_set_by_us"
 
-    // The view id of the Instagram home feed, learned from the phone rather than
-    // hardcoded. Instagram renames these, and telling the home feed apart from the DM
-    // list or search results is only possible by id, so a shipped guess would quietly
-    // stop working or block the wrong list. LEARNING arms a one-off capture.
+    // The view ids of the Instagram home feed and the TikTok feed, learned from the
+    // phone rather than hardcoded. Both apps rename these, and telling the feed apart
+    // from the DM list or search results is only possible by id, so a shipped guess
+    // would quietly stop working or block the wrong list.
+    //
+    // Instagram's keeps the original unprefixed key, so an id already learned on the
+    // phone survives the update that added TikTok.
     const val FEED_ID = "feed_id"
-    const val LEARNING = "learning"
+    const val FEED_ID_TIKTOK = "feed_id_tiktok"
 
-    // Distinct request codes keep the two alarms independent; cancelling one must
-    // not cancel the other.
-    private const val REQ_SHORTS = 1
-    private const val REQ_LOCK = 2
+    // Which feed a one-off capture is armed for: one of the two keys above, or absent.
+    // Deliberately a new key name - the single boolean this replaces is stored under
+    // "learning", and reading that back as a string would throw.
+    const val LEARNING_FOR = "learning_for"
+
+    // One alarm now, so one request code. It only ever points at PAUSE_UNTIL.
+    private const val REQ_PAUSE = 1
 
     fun get(c: Context): SharedPreferences = c.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+    fun watched(pkg: String) = pkg in APPS
+
     /** The one rule. Every "is this on right now" question goes through here. */
-    private fun active(p: SharedPreferences, onKey: String, untilKey: String): Boolean {
-        if (!p.getBoolean(onKey, false)) return false
-        val until = p.getLong(untilKey, 0L)
-        return until == 0L || System.currentTimeMillis() < until
+    fun paused(p: SharedPreferences) = p.getLong(PAUSE_UNTIL, 0L) > System.currentTimeMillis()
+
+    /**
+     * A pause that has run out but has not been cleared yet, because the alarm is
+     * inexact and may not have landed. One long read, so it is cheap enough to ask on
+     * every event.
+     */
+    fun pauseExpired(p: SharedPreferences): Boolean {
+        val until = p.getLong(PAUSE_UNTIL, 0L)
+        return until != 0L && until <= System.currentTimeMillis()
     }
 
-    fun shortsActive(p: SharedPreferences) = active(p, SHORTS_ON, SHORTS_UNTIL)
+    fun shortsActive(p: SharedPreferences) = p.getBoolean(SHORTS_ON, false) && !paused(p)
 
-    fun lockActive(p: SharedPreferences) = active(p, LOCK_ON, LOCK_UNTIL)
+    fun lockActive(p: SharedPreferences) = p.getBoolean(LOCK_ON, false) && !paused(p)
 
-    fun feedId(p: SharedPreferences): String? = p.getString(FEED_ID, null)
+    /** The pref key a package's feed id lives under, or null for apps with no feed to learn. */
+    fun feedKey(pkg: String): String? = when (pkg) {
+        INSTAGRAM -> FEED_ID
+        TIKTOK, TIKTOK_ALT -> FEED_ID_TIKTOK
+        else -> null
+    }
 
-    fun learning(p: SharedPreferences) = p.getBoolean(LEARNING, false)
+    fun feedLabel(key: String) = if (key == FEED_ID_TIKTOK) "TikTok" else "Instagram"
+
+    fun feedId(p: SharedPreferences, pkg: String): String? =
+        feedKey(pkg)?.let { p.getString(it, null) }
+
+    fun anyFeedLearned(p: SharedPreferences) =
+        p.getString(FEED_ID, null) != null || p.getString(FEED_ID_TIKTOK, null) != null
+
+    fun learningFor(p: SharedPreferences): String? = p.getString(LEARNING_FOR, null)
+
+    /** Arms a one-off capture for one app's feed. Only ever one at a time. */
+    fun startLearning(c: Context, key: String) {
+        get(c).edit().putString(LEARNING_FOR, key).apply()
+    }
 
     /** Stores the id captured from one scroll, and ends the capture. */
-    fun learnFeed(c: Context, id: String) {
-        get(c).edit().putString(FEED_ID, id).putBoolean(LEARNING, false).apply()
+    fun learnFeed(c: Context, key: String, id: String) {
+        get(c).edit().putString(key, id).remove(LEARNING_FOR).apply()
     }
 
     fun lockedApp(p: SharedPreferences, pkg: String): Boolean = when (pkg) {
         YOUTUBE -> p.getBoolean(LOCK_YOUTUBE, true)
         INSTAGRAM -> p.getBoolean(LOCK_INSTAGRAM, true)
         DISCORD -> p.getBoolean(LOCK_DISCORD, true)
+        TIKTOK, TIKTOK_ALT -> p.getBoolean(LOCK_TIKTOK, true)
         else -> false
     }
 
     /**
      * The apps worth being woken for right now, which the service hands to
-     * setServiceInfo() alongside eventTypes.
+     * setServiceInfo() alongside eventTypes. Takes the switch positions, not whether
+     * they are currently acting: while paused we still want to hear about these apps,
+     * so that opening one is enough to notice the pause has ended.
      *
-     * Discord earns a filter of its own: it is a chat app, so it fires
-     * content-changed on every message, where YouTube and Instagram sitting idle do
-     * not. Blocking never acts on Discord, so leaving it in the filter while only
-     * that toggle was on would mean a wakeup per message for nothing. It is included
-     * only when the lock is on and its box is ticked.
+     * Discord earns a filter of its own: it is a chat app, so it fires content-changed
+     * on every message, where YouTube and Instagram sitting idle do not. Blocking never
+     * acts on Discord, so leaving it in the filter while only that toggle was on would
+     * mean a wakeup per message for nothing. It is included only when the lock is on
+     * and its box is ticked.
      */
     fun watchedPackages(p: SharedPreferences, shorts: Boolean, lock: Boolean): Array<String> {
         val pkgs = linkedSetOf<String>()
         if (shorts) {
             pkgs += YOUTUBE
             pkgs += INSTAGRAM
+            // TikTok is the same kind of special case as Discord, from the other end.
+            // It has no full-screen player to back out of - it IS the player - so the
+            // only thing blocking can do there is rewind the feed. With no feed id
+            // learned there is nothing to act on, and asking to be woken for it would
+            // buy exactly nothing.
+            if (p.getString(FEED_ID_TIKTOK, null) != null) {
+                pkgs += TIKTOK
+                pkgs += TIKTOK_ALT
+            }
         }
-        if (lock) LOCKABLE.filterTo(pkgs) { lockedApp(p, it) }
-        // A capture in progress needs Instagram events even with both toggles off.
-        if (learning(p)) pkgs += INSTAGRAM
+        if (lock) APPS.filterTo(pkgs) { lockedApp(p, it) }
+        // A capture in progress needs that app's events even with both toggles off.
+        when (learningFor(p)) {
+            FEED_ID -> pkgs += INSTAGRAM
+            FEED_ID_TIKTOK -> {
+                pkgs += TIKTOK
+                pkgs += TIKTOK_ALT
+            }
+        }
         return pkgs.toTypedArray()
-    }
-
-    /** minutes <= 0 means no timer. */
-    fun setShorts(c: Context, on: Boolean, minutes: Int) = set(c, SHORTS_ON, SHORTS_UNTIL, on, minutes)
-
-    fun setLock(c: Context, on: Boolean, minutes: Int) = set(c, LOCK_ON, LOCK_UNTIL, on, minutes)
-
-    private fun set(c: Context, onKey: String, untilKey: String, on: Boolean, minutes: Int) {
-        val until = if (on && minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L
-        get(c).edit().putBoolean(onKey, on).putLong(untilKey, until).apply()
-        syncAlarms(c)
     }
 
     fun setFlag(c: Context, key: String, value: Boolean) {
         get(c).edit().putBoolean(key, value).apply()
     }
 
+    /** minutes <= 0 ends the pause instead of starting one. */
+    fun pause(c: Context, minutes: Int) {
+        val until = if (minutes > 0) System.currentTimeMillis() + minutes * 60_000L else 0L
+        get(c).edit().putLong(PAUSE_UNTIL, until).apply()
+        syncAlarms(c)
+    }
+
+    fun resume(c: Context) = pause(c, 0)
+
     /**
-     * Turns off anything whose end time has passed. Called from the expiry alarm and
-     * from the UI's onResume, so a late alarm - or one that never fires - can never
-     * leave a stale flag around.
+     * Clears a pause whose end time has passed. Called from the expiry alarm, from the
+     * UI's onResume, and from the service when an event arrives after the deadline, so
+     * a late alarm - or one that never fires - can never leave blocking switched off.
+     *
+     * Writing the key is also what makes the service recompute, via its prefs listener.
      */
     fun clearExpired(c: Context) {
         val p = get(c)
-        val e = p.edit()
-        var changed = false
-        if (p.getBoolean(SHORTS_ON, false) && !shortsActive(p)) {
-            e.putBoolean(SHORTS_ON, false).putLong(SHORTS_UNTIL, 0L)
-            changed = true
-        }
-        if (p.getBoolean(LOCK_ON, false) && !lockActive(p)) {
-            e.putBoolean(LOCK_ON, false).putLong(LOCK_UNTIL, 0L)
-            changed = true
-        }
-        if (changed) e.apply()
+        if (pauseExpired(p)) p.edit().putLong(PAUSE_UNTIL, 0L).apply()
     }
 
     /**
-     * Re-points both alarms at the stored end times. Also the reboot story: there is
-     * no BOOT_COMPLETED receiver, the service calls this from onServiceConnected().
+     * Re-points the alarm at the stored end time. Also the reboot story: there is no
+     * BOOT_COMPLETED receiver, the service calls this from onServiceConnected().
      */
     fun syncAlarms(c: Context) {
         val p = get(c)
-        arm(c, REQ_SHORTS, shortsActive(p), p.getLong(SHORTS_UNTIL, 0L))
-        arm(c, REQ_LOCK, lockActive(p), p.getLong(LOCK_UNTIL, 0L))
-    }
-
-    private fun arm(c: Context, req: Int, active: Boolean, until: Long) {
         val am = c.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val pi = PendingIntent.getBroadcast(
-            c, req, Intent(c, ExpiryReceiver::class.java),
+            c, REQ_PAUSE, Intent(c, ExpiryReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         // RTC, not RTC_WAKEUP, and set() rather than setExact*(): the system batches
-        // this with work it was already going to do instead of waking the phone. The
-        // alarm's only job is to let the service drop its event subscription early,
-        // so it is allowed to be imprecise - the timestamp check above is what is
-        // actually authoritative.
-        if (active && until > 0L) am.set(AlarmManager.RTC, until, pi) else am.cancel(pi)
+        // this with work it was already going to do instead of waking the phone, and no
+        // exact-alarm permission is needed. The alarm is allowed to be imprecise because
+        // it is not what makes blocking resume - the timestamp check is, and the service
+        // also stays subscribed to window changes while paused so that opening a blocked
+        // app after the deadline restores blocking on the spot. All this alarm does is
+        // swap the notification back over when nothing else was going to wake us.
+        val until = p.getLong(PAUSE_UNTIL, 0L)
+        if (paused(p)) am.set(AlarmManager.RTC, until, pi) else am.cancel(pi)
     }
 
     fun timeText(c: Context, millis: Long): String = DateFormat.getTimeFormat(c).format(Date(millis))
-
-    /** " until 3:45 PM", or "" when there is no timer. Shared by the toast and the notification. */
-    fun untilText(c: Context, until: Long): String =
-        if (until == 0L) "" else " until " + timeText(c, until)
 }

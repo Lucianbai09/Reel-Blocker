@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Reel Blocker</string>
-    <string name="service_description">Bounces you out of YouTube Shorts and Instagram Reels, and can lock YouTube, Instagram or Discord entirely. Runs only while a toggle is on.</string>
+    <string name="service_description">Bounces you out of YouTube Shorts and Instagram Reels, stops the Instagram and TikTok feeds from scrolling, and can lock YouTube, Instagram, TikTok or Discord entirely. Runs only while a switch is on.</string>
 </resources>

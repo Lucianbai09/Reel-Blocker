@@ -37,7 +37,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Block Shorts / Reels"
+            android:text="Block Shorts, Reels &amp; TikTok"
             android:textSize="20sp"
             android:textStyle="bold" />
 
@@ -45,21 +45,13 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingBottom="4dp"
-            android:text="Backs out of Shorts and Reels, and stops the Instagram feed." />
+            android:text="Backs out of Shorts and Reels, and stops the Instagram and TikTok feeds from scrolling." />
 
         <Switch
             android:id="@+id/sw_shorts"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="On" />
-
-        <EditText
-            android:id="@+id/et_shorts"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Minutes (blank = until I switch it off)"
-            android:inputType="number"
-            android:maxLength="4" />
 
         <TextView
             android:id="@+id/tv_shorts"
@@ -70,18 +62,39 @@
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/tv_feed"
+            android:id="@+id/tv_feed_instagram"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="12dp"
             android:textSize="12sp" />
 
         <Button
-            android:id="@+id/btn_learn"
+            android:id="@+id/btn_learn_instagram"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Set up feed blocking" />
+            android:text="Set up Instagram feed" />
+
+        <TextView
+            android:id="@+id/tv_feed_tiktok"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="12dp"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btn_learn_tiktok"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Set up TikTok feed" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Each feed snaps back to the top instead of scrolling. On TikTok that leaves you on the first video, and Inbox, Profile and search keep working normally."
+            android:textSize="12sp" />
 
         <View
             android:layout_width="match_parent"
@@ -110,14 +123,6 @@
             android:layout_height="wrap_content"
             android:text="On" />
 
-        <EditText
-            android:id="@+id/et_lock"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Minutes (blank = until I switch it off)"
-            android:inputType="number"
-            android:maxLength="4" />
-
         <TextView
             android:id="@+id/tv_lock"
             android:layout_width="match_parent"
@@ -140,6 +145,12 @@
             android:text="Instagram" />
 
         <CheckBox
+            android:id="@+id/cb_tiktok"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TikTok" />
+
+        <CheckBox
             android:id="@+id/cb_discord"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -158,6 +169,58 @@
             android:paddingStart="32dp"
             android:text="Alarms and starred contacts still ring."
             android:textSize="12sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginBottom="24dp"
+            android:layout_marginTop="24dp"
+            android:background="#20000000" />
+
+        <!-- Feature 3 -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Pause blocking"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingBottom="4dp"
+            android:text="Lifts everything above for a set time, counts it down in the notification, then puts it all back by itself. The switches stay on the whole time." />
+
+        <EditText
+            android:id="@+id/et_pause"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Minutes"
+            android:inputType="number"
+            android:maxLength="4" />
+
+        <Button
+            android:id="@+id/btn_pause"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Pause" />
+
+        <TextView
+            android:id="@+id/tv_pause"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="4dp"
+            android:textStyle="bold" />
+
+        <!-- Shown only during a pause, so a pause is never a one-way door. -->
+        <Button
+            android:id="@+id/btn_resume"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Resume blocking now"
+            android:visibility="gone" />
 
     </LinearLayout>
 
