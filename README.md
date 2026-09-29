@@ -68,12 +68,30 @@ The countdown in the notification is drawn and ticked by SystemUI from that sing
 timestamp, so it costs this app nothing at all: posted once when the pause starts, never
 updated, and it keeps counting even if the process is killed.
 
-**A pause cannot outstay its welcome.** The alarm that ends it is inexact and non-wakeup,
-the same as before, so it can land late — but it is not what makes blocking resume. The
-timestamp is checked every time anything wakes the service, and while paused the service
-stays subscribed to window changes for the apps it covers, so opening a blocked app after
-the deadline restores blocking on the spot. All the alarm does is swap the notification
-back over when nothing else was going to wake us.
+**A pause cannot outstay its welcome**, and it takes three layers to promise that.
+
+1. **A scheduled hand-back at the deadline** — one message in the service's main looper,
+   posted when the pause starts. This is what ends a pause *on time*, and it is the only
+   scheduled thing in the app: nothing runs until it fires, and it costs nothing while
+   pending.
+2. **The timestamp, checked on every event** — so however a pause ends up outliving its
+   deadline, the first thing that wakes the service puts blocking back. This is the layer
+   that is always correct.
+3. **The expiry alarm** — inexact and non-wakeup, and deliberately the weakest. It only
+   covers the process having died with a pause outstanding, so neither layer above is
+   around to run.
+
+The middle layer alone used to be the whole story, and it had a hole worth recording:
+if you started a pause and then just kept scrolling without leaving the app, nothing ever
+woke the service. The paused subscription is window changes only, so scrolling generates
+nothing it hears, and the alarm cannot be leaned on — App Standby defers inexact alarms
+by hours for an app opened as rarely as this one. So the countdown ran past zero into
+negative numbers and scrolling kept working until you switched apps. Layer 1 is the fix,
+and it is why a scheduled callback earns its place in an app that otherwise has none.
+
+Layer 1 measures in uptime, which does not advance through deep sleep, so a phone that
+sleeps past the deadline is handed back by layer 3 or by layer 2 on the first event after
+it wakes. Each layer covers what the others structurally cannot.
 
 ## Setting up feed blocking
 
@@ -187,9 +205,13 @@ repeating alarms — the accessibility service only executes inside events the O
 it, and it asks the system for **zero** event types when both switches are off.
 
 The pause is an end timestamp checked when something already woke us, not a countdown.
-While one is running the service drops to the cheapest tier it has — window changes
-only, for the apps it covers — which costs one event per switch into a blocked app and
-is what guarantees blocking can't stay off past its deadline on a late alarm.
+While one is running the service drops to the cheapest tier it has — window changes only,
+for the apps it covers — which costs one event per switch into a blocked app.
+
+A pause does add the app's one scheduled callback, posted at its deadline so that a pause
+ends on time even if you never leave the app. It is a single message in a looper that
+already exists, so nothing runs and nothing is held until it fires, and there is at most
+one of them ever pending. See [Pausing](#pausing) for why it is needed.
 
 Scroll events are the priciest tier, since they fire throughout a gesture rather than
 once per screen. They are only ever subscribed to while something acts on them: a

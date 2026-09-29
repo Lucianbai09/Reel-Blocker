@@ -215,11 +215,14 @@ object Prefs {
         )
         // RTC, not RTC_WAKEUP, and set() rather than setExact*(): the system batches
         // this with work it was already going to do instead of waking the phone, and no
-        // exact-alarm permission is needed. The alarm is allowed to be imprecise because
-        // it is not what makes blocking resume - the timestamp check is, and the service
-        // also stays subscribed to window changes while paused so that opening a blocked
-        // app after the deadline restores blocking on the spot. All this alarm does is
-        // swap the notification back over when nothing else was going to wake us.
+        // exact-alarm permission is needed.
+        //
+        // This alarm is the LAST of three layers, and the weakest on purpose. Being
+        // inexact, App Standby can defer it by hours for an app opened as rarely as this
+        // one, so nothing may lean on it for timeliness. What ends a pause on time is
+        // BlockerService.scheduleResume(); what ends it correctly no matter what is the
+        // timestamp check on every event. This alarm only covers the case where the
+        // process died with a pause outstanding, so neither of those is around to run.
         val until = p.getLong(PAUSE_UNTIL, 0L)
         if (paused(p)) am.set(AlarmManager.RTC, until, pi) else am.cancel(pi)
     }

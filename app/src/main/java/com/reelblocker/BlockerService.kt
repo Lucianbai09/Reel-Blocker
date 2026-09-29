@@ -8,6 +8,8 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -65,6 +67,17 @@ class BlockerService : AccessibilityService() {
     // it is needed. Empty until the first window change.
     private var foreground = ""
 
+    // The one scheduled thing in the app. See scheduleResume().
+    private val handler = Handler(Looper.getMainLooper())
+    private val resumeOnDeadline = Runnable {
+        Prefs.clearExpired(this)
+        // Re-armed in case that cleared nothing. The delay is measured in uptime but the
+        // deadline is wall-clock, so a clock that moves backwards under us can fire this
+        // early - and a callback consumed early would leave the pause with nothing left
+        // to end it. Idempotent when the pause did end: scheduleResume() only cancels.
+        scheduleResume()
+    }
+
     // Held in a field on purpose: SharedPreferences keeps listeners weakly, so a
     // lambda passed inline would be collected and the subscription would silently
     // stop updating.
@@ -75,7 +88,37 @@ class BlockerService : AccessibilityService() {
             applyEventTypes()
             updateNotification()
             applyDnd()
+            scheduleResume()
         }
+    }
+
+    /**
+     * Hands blocking back at the pause deadline, and is the only scheduled thing in this
+     * app.
+     *
+     * It exists because nothing else could do it. While paused the subscription drops to
+     * window changes only, so staying inside one app and scrolling generates nothing we
+     * hear, and the expiry alarm is inexact - App Standby defers those by hours for an
+     * app opened as rarely as this one. So a pause that ran out while you kept scrolling
+     * never ended: the countdown went negative and scrolling kept working until you left
+     * the app.
+     *
+     * One message in the main looper, not a poll. Nothing runs until it fires and it
+     * costs nothing while pending, so this does not reintroduce a timer in the sense the
+     * README rules out.
+     *
+     * postDelayed is uptime-based, so it does not advance through deep sleep. That is
+     * fine and is why the other two layers stay: a phone that sleeps past the deadline
+     * is handed back by the alarm, or by the timestamp check on the first event after it
+     * wakes. This layer is the one that covers the screen-on case the other two cannot.
+     */
+    private fun scheduleResume() {
+        handler.removeCallbacks(resumeOnDeadline)
+        if (!Prefs.paused(prefs)) return
+        handler.postDelayed(
+            resumeOnDeadline,
+            prefs.getLong(Prefs.PAUSE_UNTIL, 0L) - System.currentTimeMillis()
+        )
     }
 
     override fun onServiceConnected() {
@@ -86,6 +129,7 @@ class BlockerService : AccessibilityService() {
         applyEventTypes()
         updateNotification()     // notifications are cleared by a reboot, so re-post here
         applyDnd()
+        scheduleResume()         // a pause can outlive the process; re-arm the hand-back
         // Registered last, on purpose. clearExpired() above writes when a pause ran out
         // while the service was off, and with the listener already attached that write
         // would run this whole block early - posting the notification before
@@ -100,6 +144,7 @@ class BlockerService : AccessibilityService() {
         // notification claiming things are still blocked, and Do Not Disturb stuck on.
         notifications()?.cancel(NOTIF_ID)
         releaseDnd()
+        handler.removeCallbacks(resumeOnDeadline)
         if (this::prefs.isInitialized) prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         super.onDestroy()
     }
