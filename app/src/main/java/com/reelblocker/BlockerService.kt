@@ -80,13 +80,19 @@ class BlockerService : AccessibilityService() {
 
     override fun onServiceConnected() {
         prefs = Prefs.get(this)
-        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         Prefs.clearExpired(this)
         Prefs.syncAlarms(this)   // re-arms after a reboot; no BOOT_COMPLETED receiver needed
         createChannel()
         applyEventTypes()
         updateNotification()     // notifications are cleared by a reboot, so re-post here
         applyDnd()
+        // Registered last, on purpose. clearExpired() above writes when a pause ran out
+        // while the service was off, and with the listener already attached that write
+        // would run this whole block early - posting the notification before
+        // createChannel() had made the channel, which silently drops it - and then again
+        // here. Nothing can be missed by registering late: every write comes from the
+        // main thread, and so does this.
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
     }
 
     override fun onDestroy() {
