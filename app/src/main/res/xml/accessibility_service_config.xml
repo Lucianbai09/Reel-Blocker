@@ -24,4 +24,4 @@
     android:canRetrieveWindowContent="true"
     android:description="@string/service_description"
     android:notificationTimeout="500"
-    android:packageNames="com.google.android.youtube,com.instagram.android,com.discord,com.zhiliaoapp.musically,com.ss.android.ugc.trill" />
+    android:packageNames="com.google.android.youtube,com.instagram.android,com.discord,com.zhiliaoapp.musically,com.ss.android.ugc.trill,com.chess,com.naver.linewebtoon" />

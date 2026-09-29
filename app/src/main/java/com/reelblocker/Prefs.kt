@@ -26,8 +26,16 @@ object Prefs {
     const val TIKTOK = "com.zhiliaoapp.musically"
     const val TIKTOK_ALT = "com.ss.android.ugc.trill"
 
+    // Lock-only, the way Discord is: no feed to rewind and no player to back out of, so
+    // the lock is the only thing that can ever act on them. Nothing else needs adding
+    // for that - feedKey() returns null for anything it does not name, and the
+    // back-press path tests the view-id array, which holds no id of theirs.
+    const val CHESS = "com.chess"
+    const val WEBTOON = "com.naver.linewebtoon"
+
     /** Every app the service ever acts on, which is also the lock's full menu. */
-    private val APPS = listOf(YOUTUBE, INSTAGRAM, DISCORD, TIKTOK, TIKTOK_ALT)
+    private val APPS =
+        listOf(YOUTUBE, INSTAGRAM, DISCORD, TIKTOK, TIKTOK_ALT, CHESS, WEBTOON)
 
     private const val FILE = "reelblocker"
 
@@ -37,6 +45,8 @@ object Prefs {
     const val LOCK_INSTAGRAM = "lock_instagram"
     const val LOCK_DISCORD = "lock_discord"
     const val LOCK_TIKTOK = "lock_tiktok"
+    const val LOCK_CHESS = "lock_chess"
+    const val LOCK_WEBTOON = "lock_webtoon"
     const val LOCK_DND = "lock_dnd"
 
     /**
@@ -123,6 +133,8 @@ object Prefs {
         INSTAGRAM -> p.getBoolean(LOCK_INSTAGRAM, true)
         DISCORD -> p.getBoolean(LOCK_DISCORD, true)
         TIKTOK, TIKTOK_ALT -> p.getBoolean(LOCK_TIKTOK, true)
+        CHESS -> p.getBoolean(LOCK_CHESS, true)
+        WEBTOON -> p.getBoolean(LOCK_WEBTOON, true)
         else -> false
     }
 

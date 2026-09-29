@@ -157,6 +157,18 @@
             android:text="Discord" />
 
         <CheckBox
+            android:id="@+id/cb_chess"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Chess.com" />
+
+        <CheckBox
+            android:id="@+id/cb_webtoon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Webtoon" />
+
+        <CheckBox
             android:id="@+id/cb_dnd"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

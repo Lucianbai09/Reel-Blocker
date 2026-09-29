@@ -33,6 +33,8 @@ class MainActivity : Activity() {
     private lateinit var cbInstagram: CheckBox
     private lateinit var cbTiktok: CheckBox
     private lateinit var cbDiscord: CheckBox
+    private lateinit var cbChess: CheckBox
+    private lateinit var cbWebtoon: CheckBox
     private lateinit var cbDnd: CheckBox
     private lateinit var etPause: EditText
     private lateinit var btnPause: Button
@@ -56,6 +58,8 @@ class MainActivity : Activity() {
         cbInstagram = findViewById(R.id.cb_instagram)
         cbTiktok = findViewById(R.id.cb_tiktok)
         cbDiscord = findViewById(R.id.cb_discord)
+        cbChess = findViewById(R.id.cb_chess)
+        cbWebtoon = findViewById(R.id.cb_webtoon)
         cbDnd = findViewById(R.id.cb_dnd)
         etPause = findViewById(R.id.et_pause)
         btnPause = findViewById(R.id.btn_pause)
@@ -89,6 +93,12 @@ class MainActivity : Activity() {
         }
         cbDiscord.setOnClickListener {
             Prefs.setFlag(this, Prefs.LOCK_DISCORD, cbDiscord.isChecked)
+        }
+        cbChess.setOnClickListener {
+            Prefs.setFlag(this, Prefs.LOCK_CHESS, cbChess.isChecked)
+        }
+        cbWebtoon.setOnClickListener {
+            Prefs.setFlag(this, Prefs.LOCK_WEBTOON, cbWebtoon.isChecked)
         }
         cbDnd.setOnClickListener {
             // Refuse to store it until access exists, so the checkbox never claims
@@ -164,6 +174,8 @@ class MainActivity : Activity() {
         cbInstagram.isChecked = p.getBoolean(Prefs.LOCK_INSTAGRAM, true)
         cbTiktok.isChecked = p.getBoolean(Prefs.LOCK_TIKTOK, true)
         cbDiscord.isChecked = p.getBoolean(Prefs.LOCK_DISCORD, true)
+        cbChess.isChecked = p.getBoolean(Prefs.LOCK_CHESS, true)
+        cbWebtoon.isChecked = p.getBoolean(Prefs.LOCK_WEBTOON, true)
         // Access can be revoked in Settings, so this is re-checked rather than trusted.
         cbDnd.isChecked = p.getBoolean(Prefs.LOCK_DND, false) && dndAccessGranted()
 

@@ -1,8 +1,8 @@
 # Reel Blocker
 
 Personal Android app that bounces you out of YouTube Shorts and Instagram Reels, stops
-the Instagram and TikTok feeds from scrolling, and can lock YouTube, Instagram, TikTok
-and Discord entirely. Built to cost nothing when it isn't blocking.
+the Instagram and TikTok feeds from scrolling, and can lock YouTube, Instagram, TikTok,
+Discord, Chess.com and Webtoon entirely. Built to cost nothing when it isn't blocking.
 
 ## Features
 
@@ -10,7 +10,7 @@ and Discord entirely. Built to cost nothing when it isn't blocking.
   player opens, and stops the Instagram home feed and the TikTok feed from scrolling.
   The feeds need a one-time setup tap each, below.
 - **Lock apps** — sends you Home with a "Locked" toast when a locked app opens.
-  YouTube, Instagram, TikTok and Discord are toggled separately.
+  YouTube, Instagram, TikTok, Discord, Chess.com and Webtoon are toggled separately.
 - **Pause blocking** — the escape hatch. Enter minutes, tap **Pause**, and everything
   above stops for that long, counts down in the notification, and comes back on by
   itself. The switches stay on the whole time.
@@ -158,11 +158,12 @@ above. If an install fails with *"App not installed"*, uninstall the old copy fi
 **There is no `INTERNET` permission.** Android enforces that at the kernel level, so
 this app cannot open a network socket — nothing it sees can leave the phone, ever.
 
-- Sees YouTube, Instagram, TikTok and Discord only, and only while a switch needs them;
-  the system filters everything else out before it reaches the app. Discord is dropped
-  from the filter entirely unless the lock is on and its box is ticked, and TikTok until
-  either its feed has been set up or its box is ticked.
-- Stores twelve values privately, with backup disabled: eight on/off flags, one
+- Sees YouTube, Instagram, TikTok, Discord, Chess.com and Webtoon only, and only while a
+  switch needs them; the system filters everything else out before it reaches the app.
+  Discord, Chess.com and Webtoon are dropped from the filter entirely unless the lock is
+  on and the box is ticked, and TikTok until either its feed has been set up or its box
+  is ticked.
+- Stores fourteen values privately, with backup disabled: ten on/off flags, one
   timestamp, the two learned view ids, and which feed a setup tap is waiting on. Screen
   content is never written down.
 - Can press Back, press Home, and scroll a list back to the top. That's the whole list
@@ -198,12 +199,16 @@ nothing fetches a node until the app being scrolled is one with a feed set up �
 you configured TikTok and not Instagram, scrolling Instagram costs a couple of in-memory
 reads and no node fetch at all.
 
-Discord and TikTok are filtered more tightly than the other two, from opposite ends.
-Discord is a chat app, so it fires content-changed events on every message, and Block
-Shorts never acts on it; it is in the filter only when the lock is on and its box is
-ticked. TikTok has no player to back out of, so the only thing blocking can do there is
-rewind the feed — with no feed id learned there is nothing to act on, and it is kept out
-of the filter entirely.
+The lock-only apps are filtered more tightly than the rest. Discord, Chess.com and
+Webtoon have no short-form feed at all, so Block Shorts can never act on them — and
+Discord in particular is a chat app that fires content-changed on every message. All
+three are in the filter only when the lock is on and that box is ticked. Since a locked
+app bounces you Home on its first window event, being in the filter costs one event per
+attempt to open it, not a stream.
+
+TikTok is narrowed from the opposite end: it has no player to back out of, so the only
+thing blocking can do there is rewind the feed — with no feed id learned there is nothing
+to act on, and it is kept out of the filter entirely.
 
 The status notification is a plain notification, not a foreground service, so it costs
 one message when state changes and nothing while it's displayed. The pause countdown
